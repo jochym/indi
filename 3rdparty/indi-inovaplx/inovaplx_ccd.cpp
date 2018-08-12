@@ -14,7 +14,6 @@ int timerNS = -1;
 int timerWE = -1;
 unsigned char DIR          = 0xF;
 //unsigned char OLD_DIR      = 0xF;
-const int POLLMS           = 500;       /* Polling interval 500 ms */
 //const int MAX_CCD_GAIN     = 1023;        /* Max CCD gain */
 //const int MIN_CCD_GAIN     = 0;        /* Min CCD gain */
 //const int MAX_CCD_KLEVEL   = 255;        /* Max CCD black level */
@@ -22,7 +21,7 @@ const int POLLMS           = 500;       /* Polling interval 500 ms */
 
 /* Macro shortcut to CCD values */
 //#define TEMP_FILE "/tmp/inovaInstanceNumber.tmp"
-//INovaCCD *inova = NULL;
+//INovaCCD *inova = nullptr;
 //static int isInit = 0;
 //extern char *__progname;
 
@@ -93,11 +92,11 @@ bool INovaCCD::Connect()
     if(iNovaSDK_MaxCamera() > 0)
     {
         Sn = iNovaSDK_OpenCamera(1);
-        DEBUGF(INDI::Logger::DBG_DEBUG, "Serial Number: %s", Sn);
+        LOGF_DEBUG("Serial Number: %s", Sn);
         if(Sn[0] >= '0' && Sn[0] < '3')
         {
             iNovaSDK_InitST4();
-            DEBUGF(INDI::Logger::DBG_SESSION, "Camera model is %s", iNovaSDK_GetName());
+            LOGF_INFO("Camera model is %s", iNovaSDK_GetName());
             iNovaSDK_InitCamera(RESOLUTION_FULL);
             //maxW = iNovaSDK_GetImageWidth();
             //maxH = iNovaSDK_GetImageHeight();
@@ -109,14 +108,19 @@ bool INovaCCD::Connect()
             CameraPropertiesNP.s = IPS_IDLE;
 
             // Set camera capabilities
-            uint32_t cap = CCD_CAN_ABORT | CCD_CAN_BIN | CCD_CAN_SUBFRAME | (iNovaSDK_HasColorSensor() ? CCD_HAS_BAYER : 0) | (iNovaSDK_HasST4() ? CCD_HAS_ST4_PORT : 0);
+            uint32_t cap = CCD_CAN_ABORT | CCD_CAN_BIN | CCD_CAN_SUBFRAME | (iNovaSDK_HasST4() ? CCD_HAS_ST4_PORT : 0);
             SetCCDCapability(cap);
+            if(iNovaSDK_HasColorSensor()) {
+                IUSaveText(&BayerT[2], "RGGB");
+                IDSetText(&BayerTP, nullptr);
+                SetCCDCapability(GetCCDCapability() | CCD_HAS_BAYER);
+            }
 
             return true;
         }
         iNovaSDK_CloseCamera();
     }
-    DEBUG(INDI::Logger::DBG_ERROR, "No cameras opened.");
+    LOG_ERROR("No cameras opened.");
     return false;
 }
 
@@ -160,8 +164,8 @@ bool INovaCCD::initProperties()
 
     // Set minimum exposure speed to 0.001 seconds
     PrimaryCCD.setMinMaxStep("CCD_EXPOSURE", "CCD_EXPOSURE_VALUE", 0.0001, 1000, 1, false);
-    if(iNovaSDK_HasColorSensor())
-        IUSaveText(&BayerT[2], "RGGB");
+
+    setDefaultPollingPeriod(500);
 
     return true;
 
@@ -243,7 +247,7 @@ bool INovaCCD::StartExposure(float duration)
 
     ExposureRequest = duration;
     PrimaryCCD.setExposureDuration(ExposureRequest);
-    gettimeofday(&ExpStart,NULL);
+    gettimeofday(&ExpStart,nullptr);
 
     InExposure=true;
 
@@ -269,7 +273,7 @@ float INovaCCD::CalcTimeLeft()
     double timesince;
     double timeleft;
     struct timeval now;
-    gettimeofday(&now,NULL);
+    gettimeofday(&now,nullptr);
 
     timesince=(double)(now.tv_sec * 1000.0 + now.tv_usec/1000) - (double)(ExpStart.tv_sec * 1000.0 + ExpStart.tv_usec/1000);
     timesince=timesince/1000;
@@ -294,7 +298,7 @@ bool INovaCCD::ISNewNumber(const char *dev, const char *name, double values[], c
         iNovaSDK_SetBlackLevel(static_cast<int16_t>(CameraPropertiesN[CCD_BLACKLEVEL_N].value));
 
         CameraPropertiesNP.s = IPS_OK;
-        IDSetNumber(&CameraPropertiesNP, NULL);
+        IDSetNumber(&CameraPropertiesNP, nullptr);
         return true;
     }
 
@@ -343,9 +347,9 @@ void INovaCCD::TimerHit()
         else
         {
             /* We're done exposing */
-            DEBUG(INDI::Logger::DBG_SESSION, "Exposure done, downloading image...");
+            LOG_INFO("Exposure done, downloading image...");
             RawData = (unsigned char*)iNovaSDK_GrabFrame();
-            if(RawData != NULL)
+            if(RawData != nullptr)
             {
                 // We're no longer exposing...
                 InExposure = false;
@@ -359,7 +363,7 @@ void INovaCCD::TimerHit()
     return;
 }
 
-IPState INovaCCD::GuideEast(float ms)
+IPState INovaCCD::GuideEast(uint32_t ms)
 {
     DIR |= 0x09;
     DIR &= 0x0E;
@@ -368,7 +372,7 @@ IPState INovaCCD::GuideEast(float ms)
     return IPS_IDLE;
 }
 
-IPState INovaCCD::GuideWest(float ms)
+IPState INovaCCD::GuideWest(uint32_t ms)
 {
     DIR |= 0x09;
     DIR &= 0x07;
@@ -377,7 +381,7 @@ IPState INovaCCD::GuideWest(float ms)
     return IPS_IDLE;
 }
 
-IPState INovaCCD::GuideNorth(float ms)
+IPState INovaCCD::GuideNorth(uint32_t ms)
 {
     DIR |= 0x06;
     DIR &= 0x0D;
@@ -386,7 +390,7 @@ IPState INovaCCD::GuideNorth(float ms)
     return IPS_IDLE;
 }
 
-IPState INovaCCD::GuideSouth(float ms)
+IPState INovaCCD::GuideSouth(uint32_t ms)
 {
     DIR |= 0x06;
     DIR &= 0x0B;
@@ -399,7 +403,7 @@ void INovaCCD::grabImage()
 {
     // Let's get a pointer to the frame buffer
     unsigned char * image = PrimaryCCD.getFrameBuffer();
-    if(image != NULL)
+    if(image != nullptr)
     {
         int Bpp = iNovaSDK_GetDataWide() > 0 ? 2 : 1;
         int p = 0;
@@ -448,7 +452,7 @@ void INovaCCD::grabImage()
             }
         }
         // Let INDI::CCD know we're done filling the image buffer
-        DEBUG(INDI::Logger::DBG_SESSION, "Download complete.");
+        LOG_INFO("Download complete.");
         ExposureComplete(&PrimaryCCD);
     }
 }

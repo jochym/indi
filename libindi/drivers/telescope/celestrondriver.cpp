@@ -37,24 +37,10 @@
 
 #define CELESTRON_TIMEOUT 5 /* FD timeout in seconds */
 
-// logging macros
-#define LOG_DEBUG(txt)  DEBUGDEVICE(device_str, INDI::Logger::DBG_DEBUG, (txt))
-#define LOG_INFO(txt)   DEBUGDEVICE(device_str, INDI::Logger::DBG_SESSION, (txt))
-#define LOG_WARN(txt)   DEBUGDEVICE(device_str, INDI::Logger::DBG_WARNING, (txt))
-#define LOG_ERROR(txt)  DEBUGDEVICE(device_str, INDI::Logger::DBG_ERROR, (txt))
-#define LOG_EXTRA(...)  DEBUGDEVICE(device_str, INDI::Logger::DBG_EXTRA_1, (txt))
-
-#define LOGF_DEBUG(...) DEBUGFDEVICE(device_str, INDI::Logger::DBG_DEBUG, __VA_ARGS__)
-#define LOGF_INFO(...)  DEBUGFDEVICE(device_str, INDI::Logger::DBG_SESSION, __VA_ARGS__)
-#define LOGF_WARN(...)  DEBUGFDEVICE(device_str, INDI::Logger::DBG_WARNING, __VA_ARGS__)
-#define LOGF_ERROR(...) DEBUGFDEVICE(device_str, INDI::Logger::DBG_ERROR, __VA_ARGS__)
-#define LOGF_EXTRA(...) DEBUGFDEVICE(device_str, INDI::Logger::DBG_EXTRA_1, __VA_ARGS__)
-
-
 using namespace Celestron;
 
-
 char device_str[MAXINDIDEVICE] = "Celestron GPS";
+
 
 // Account for the quadrant in declination
 double Celestron::trimDecAngle(double angle)
@@ -112,6 +98,11 @@ void hex_dump(char *buf, const char *data, int size)
         buf[3 * size - 1] = '\0';
 }
 
+// This method is required by the logging macros
+const char *CelestronDriver::getDeviceName()
+{
+    return device_str;
+}
 
 void CelestronDriver::set_device(const char *name)
 {
@@ -372,7 +363,7 @@ bool CelestronDriver::get_dev_firmware(int dev, char *version, int size)
 {
     set_sim_response("\x01\x09#");
 
-    int rlen = send_passthrough(dev, 0xfe, NULL, 0, response, 2);
+    int rlen = send_passthrough(dev, 0xfe, nullptr, 0, response, 2);
 
     if (rlen == 3)
         snprintf(version, size, "%d.%02d", response[0], response[1]);
@@ -404,7 +395,7 @@ int CelestronDriver::send_pulse(CELESTRON_DIRECTION dir, signed char rate, unsig
     payload[1] = duration_csec;
 
     set_sim_response("#");
-    return send_passthrough(dev, 0x26, payload, 2, response, 1);
+    return send_passthrough(dev, 0x26, payload, 2, response, 0);
 }
 
 /*****************************************************************
@@ -418,7 +409,7 @@ int CelestronDriver::get_pulse_status(CELESTRON_DIRECTION dir, bool &pulse_state
     int dev = (dir == CELESTRON_N || dir == CELESTRON_S) ? CELESTRON_DEV_DEC : CELESTRON_DEV_RA;
     char payload[2] = {0, 0};
 
-    set_sim_response("#");
+    set_sim_response("\x00#");
     if (!send_passthrough(dev, 0x27, payload, 2, response, 1))
         return false;
 
@@ -434,7 +425,7 @@ bool CelestronDriver::start_motion(CELESTRON_DIRECTION dir, CELESTRON_SLEW_RATE 
     payload[0] = rate + 1;
 
     set_sim_response("#");
-    return send_passthrough(dev, cmd_id, payload, 1, response, 1);
+    return send_passthrough(dev, cmd_id, payload, 1, response, 0);
 }
 
 bool CelestronDriver::stop_motion(CELESTRON_DIRECTION dir)
@@ -443,7 +434,7 @@ bool CelestronDriver::stop_motion(CELESTRON_DIRECTION dir)
     char payload[] = { 0 };
 
     set_sim_response("#");
-    return send_passthrough(dev, 0x24, payload, 1, response, 1);
+    return send_passthrough(dev, 0x24, payload, 1, response, 0);
 }
 
 bool CelestronDriver::abort()
@@ -556,7 +547,7 @@ bool CelestronDriver::get_radec(double *ra, double *dec, bool precise)
     fs_sexa(RAStr, *ra, 2, 3600);
     fs_sexa(DecStr, *dec, 2, 3600);
 
-    LOGF_EXTRA("RA-DEC (%s,%s)", RAStr, DecStr);
+    LOGF_EXTRA1("RA-DEC (%s,%s)", RAStr, DecStr);
     return true;
 }
 
@@ -582,7 +573,7 @@ bool CelestronDriver::get_azalt(double *az, double *alt, bool precise)
     char AzStr[16], AltStr[16];
     fs_sexa(AzStr, *az, 3, 3600);
     fs_sexa(AltStr, *alt, 2, 3600);
-    LOGF_EXTRA("RES <%s> ==> AZM-ALT (%s,%s)", response, AzStr, AltStr);
+    LOGF_EXTRA1("RES <%s> ==> AZM-ALT (%s,%s)", response, AzStr, AltStr);
     return true;
 }
 

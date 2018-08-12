@@ -45,8 +45,8 @@ ENDIF ()
 
 set(INDI_SOVERSION "1")
 set(CMAKE_INDI_VERSION_MAJOR 1)
-set(CMAKE_INDI_VERSION_MINOR 6)
-set(CMAKE_INDI_VERSION_RELEASE 2)
+set(CMAKE_INDI_VERSION_MINOR 7)
+set(CMAKE_INDI_VERSION_RELEASE 4)
 set(CMAKE_INDI_VERSION_STRING "${CMAKE_INDI_VERSION_MAJOR}.${CMAKE_INDI_VERSION_MINOR}.${CMAKE_INDI_VERSION_RELEASE}")
 set(INDI_VERSION ${CMAKE_INDI_VERSION_MAJOR}.${CMAKE_INDI_VERSION_MINOR}.${CMAKE_INDI_VERSION_RELEASE})
 
@@ -193,6 +193,9 @@ if (INDI_BUILD_QT5_CLIENT)
 set(QT_ANDROID "" CACHE path "Qt Android path")
 # 1. Dependencies
 if (ANDROID)
+    set(Qt5Core_DIR "${QT_ANDROID}/lib/cmake/Qt5Core")
+    include(${QT_ANDROID}/lib/cmake/Qt5/Qt5Config.cmake)
+    include(${QT_ANDROID}/lib/cmake/Qt5Core/Qt5CoreConfig.cmake)
     include(${QT_ANDROID}/lib/cmake/Qt5Network/Qt5NetworkConfig.cmake)
     if (NOT CFITSIO_DIR)
         message(FATAL_ERROR CFITSIO_DIR must be set)
@@ -201,7 +204,7 @@ if (ANDROID)
         set(CFITSIO_LIBRARIES ${CFITSIO_DIR}/libcfitsio.a)
     endif ()
 else ()
-    find_package(Qt5Network)
+    find_package(Qt5Network REQUIRED)
     find_package(ZLIB REQUIRED)
     find_package(CFITSIO REQUIRED)
 endif ()
@@ -233,7 +236,7 @@ add_library(indiclientqt STATIC ${indiclientqt_C_SRC} ${indiclientqt_CXX_SRC})
 if (NOT CYGWIN AND NOT WIN32)
 set_target_properties(indiclientqt PROPERTIES COMPILE_FLAGS "-fPIC")
 endif(NOT CYGWIN AND NOT WIN32)
-qt5_use_modules(indiclientqt Network)
+target_link_libraries(indiclientqt Qt5::Network)
 if (WIN32 OR ANDROID)
 install(TARGETS indiclientqt ARCHIVE DESTINATION lib)
 else(WIN32 OR ANDROID)
@@ -309,10 +312,13 @@ ENDIF(OGGTHEORA_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/encoder/encodermanager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/encoder/encoderinterface.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/encoder/rawencoder.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/encoder/mjpegencoder.cpp        
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/encoder/mjpegencoder.cpp
         ${theorarecorder_CXX_SRC}
         )
-    SET(libstream_C_SRC ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/jpegutils.c)
+    SET(libstream_C_SRC
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/jpegutils.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/ccvt_c2.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/ccvt_misc.c)
     IF (UNITY_BUILD)
         ENABLE_UNITY_BUILD(libstream libstream_C_SRC 10 c)
         ENABLE_UNITY_BUILD(libstream libstream_CXX_SRC 10 cpp)
@@ -320,9 +326,7 @@ ENDIF(OGGTHEORA_FOUND)
 
     IF (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
         SET(libwebcam_C_SRC
-            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_colorspace.c
-            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/ccvt_c2.c
-            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/ccvt_misc.c)
+            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_colorspace.c)
         SET(libwebcam_CXX_SRC
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_base.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_decode/v4l2_decode.cpp
@@ -433,6 +437,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libs/indibase/alignment)
 ########### Imager ##############
 set(imager_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/drivers/agent/agent_imager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/drivers/agent/group.cpp
    )
 
 add_executable(indi_imager_agent ${imager_SRCS})
@@ -469,14 +474,17 @@ SET(lx200generic_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200_16.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200gps.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200generic.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200telescope.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200classic.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200apdriver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200gemini.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200zeq25.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200gotonova.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200pulsar2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap_experimentaldriver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap_experimental.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ap_gtocp2.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200fs2.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200ss2000pc.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/lx200_OnStep.cpp
@@ -488,7 +496,7 @@ IF (UNITY_BUILD)
 ENDIF ()
 
 add_executable(indi_lx200generic ${lx200generic_SRCS})
-
+target_compile_definitions(indi_lx200generic PRIVATE -D_XOPEN_SOURCE=600 -D_POSIX_C_SOURCE=200809L)
 target_link_libraries(indi_lx200generic indidriver)
 
 install(TARGETS indi_lx200generic RUNTIME DESTINATION bin )
@@ -499,6 +507,7 @@ exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200_16)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200gps)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200ap_experimental)\n
+exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200ap_gtocp2)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200ap)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200gemini)\n
 exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_lx200generic \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_lx200zeq25)\n
@@ -518,10 +527,6 @@ SET(celestrongps_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/celestrondriver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/celestrongps.cpp)
 
-IF (UNITY_BUILD)
-    ENABLE_UNITY_BUILD(celestrongps celestrongps_SRC 10 cpp)
-ENDIF ()
-
 add_executable(indi_celestron_gps ${celestrongps_SRC})
 
 target_link_libraries(indi_celestron_gps indidriver)
@@ -535,11 +540,11 @@ install(TARGETS indi_celestron_gps RUNTIME DESTINATION bin)
 SET(temma_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/temmadriver.cpp )
 
-add_executable(indi_temma ${temma_SRC})
+add_executable(indi_temma_telescope ${temma_SRC})
 
-target_link_libraries(indi_temma indidriver AlignmentDriver)
+target_link_libraries(indi_temma_telescope indidriver AlignmentDriver)
 
-install(TARGETS indi_temma RUNTIME DESTINATION bin)
+install(TARGETS indi_temma_telescope RUNTIME DESTINATION bin)
 #################################################################################
 
 ########### Paramount ##########
@@ -595,6 +600,32 @@ add_executable(indi_ieq_telescope ${ieq_SRC})
 target_link_libraries(indi_ieq_telescope indidriver)
 
 install(TARGETS indi_ieq_telescope RUNTIME DESTINATION bin)
+
+########### IOptronV3 / CEM120 #############
+SET(ioptronv3_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/ioptronv3driver.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/ioptronv3.cpp)
+
+IF (UNITY_BUILD)
+    ENABLE_UNITY_BUILD(ioptronv3 ioptronv3_SRC 10 cpp)
+ENDIF ()
+
+add_executable(indi_ioptronv3_telescope ${ioptronv3_SRC})
+
+target_link_libraries(indi_ioptronv3_telescope indidriver)
+
+install(TARGETS indi_ioptronv3_telescope RUNTIME DESTINATION bin)
+
+########### Explore Scientific PMC8 #############
+SET(pmc8_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/pmc8driver.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/telescope/pmc8.cpp)
+
+add_executable(indi_pmc8_telescope ${pmc8_SRC})
+
+target_link_libraries(indi_pmc8_telescope indidriver)
+
+install(TARGETS indi_pmc8_telescope RUNTIME DESTINATION bin)
 
 ########### Telescope Simulator ##############
 SET(telescopesimulator_SRC
@@ -690,15 +721,12 @@ target_link_libraries(indi_sestosenso_focus indidriver)
 install(TARGETS indi_sestosenso_focus RUNTIME DESTINATION bin)
 
 ################ Televue FocusMaster ################
-SET(focusmaster_SRC
-    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/focusmaster.cpp)
+#SET(focusmaster_SRC
+#    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/focusmaster.cpp)
 
-add_executable(indi_focusmaster_focus ${focusmaster_SRC})
-target_link_libraries(indi_focusmaster_focus indidriver)
-install(TARGETS indi_focusmaster_focus RUNTIME DESTINATION bin)
-IF (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/99-focusmaster.rules DESTINATION ${UDEVRULES_INSTALL_DIR})
-ENDIF ()
+#add_executable(indi_focusmaster_focus ${focusmaster_SRC})
+#target_link_libraries(indi_focusmaster_focus indidriver)
+#install(TARGETS indi_focusmaster_focus RUNTIME DESTINATION bin)
 
 ########### Lakeside ###########
 set(indilakeside_SRCS  ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/lakeside.cpp)
@@ -766,9 +794,6 @@ SET(perfectstar_SRC
 add_executable(indi_perfectstar_focus ${perfectstar_SRC})
 target_link_libraries(indi_perfectstar_focus indidriver)
 install(TARGETS indi_perfectstar_focus RUNTIME DESTINATION bin)
-IF (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/99-perfectstar.rules DESTINATION ${UDEVRULES_INSTALL_DIR})
-ENDIF ()
 
 ################ hitechfocus Focuser ################
 
@@ -778,9 +803,6 @@ SET(hitecastrodcfocuser_SRC
 add_executable(indi_hitecastrodc_focus ${hitecastrodcfocuser_SRC})
 target_link_libraries(indi_hitecastrodc_focus indidriver)
 install(TARGETS indi_hitecastrodc_focus RUNTIME DESTINATION bin)
-IF (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/99-hitecastrodcfocuser.rules DESTINATION ${UDEVRULES_INSTALL_DIR})
-ENDIF ()
 
 ################ JMI Smart Focus Focuser ################
 
@@ -805,6 +827,11 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/make_tcfs_symlink.cmake
 "exec_program(\"${CMAKE_COMMAND}\" ARGS -E create_symlink indi_tcfs_focus \$ENV{DESTDIR}${BIN_INSTALL_DIR}/indi_tcfs3_focus)\n")
 set_target_properties(indi_tcfs_focus PROPERTIES POST_INSTALL_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/make_tcfs_symlink.cmake)
 
+#### UDEV Rules File for Focusers ####
+#### One rule for for all INDI standard focusers ####
+IF (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/drivers/focuser/99-focusers.rules DESTINATION ${UDEVRULES_INSTALL_DIR})
+ENDIF ()
 #################################################################################
 
 #####################################
@@ -1060,6 +1087,18 @@ add_executable(indi_star2000 ${STAR2000_SRC})
 target_link_libraries(indi_star2000 indidriver)
 install(TARGETS indi_star2000 RUNTIME DESTINATION bin)
 
+########### Arduino ST4 Driver ###############
+
+SET(arduinost4_SRC ${CMAKE_CURRENT_SOURCE_DIR}/drivers/auxiliary/arduino_st4.cpp)
+
+IF (UNITY_BUILD)
+    ENABLE_UNITY_BUILD(arduinost4 arduinost4_SRC 10 cpp)
+ENDIF ()
+
+add_executable(indi_arduinost4 ${arduinost4_SRC})
+target_link_libraries(indi_arduinost4 indidriver)
+install(TARGETS indi_arduinost4 RUNTIME DESTINATION bin)
+
 ########### GPUSB Driver ###############
 
 SET(gpusb_SRC
@@ -1115,6 +1154,15 @@ install(TARGETS indi_usbdewpoint RUNTIME DESTINATION bin)
 ########## WEATHER GROUP ############
 #####################################
 
+########### Weather Simulator ###############
+
+SET(weathersimulator_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/weather/weathersimulator.cpp)
+
+add_executable(indi_simulator_weather ${weathersimulator_SRC})
+target_link_libraries(indi_simulator_weather indidriver)
+install(TARGETS indi_simulator_weather RUNTIME DESTINATION bin )
+
 ########### Weather Meta Driver ###############
 
 SET(weathermeta_SRC
@@ -1123,6 +1171,15 @@ SET(weathermeta_SRC
 add_executable(indi_meta_weather ${weathermeta_SRC})
 target_link_libraries(indi_meta_weather indidriver)
 install(TARGETS indi_meta_weather RUNTIME DESTINATION bin )
+
+########### Weather File Watcher ###############
+
+SET(weatherwatcher_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/weather/weatherwatcher.cpp)
+
+add_executable(indi_watcher_weather ${weatherwatcher_SRC})
+target_link_libraries(indi_watcher_weather indidriver ${CURL_LIBRARIES})
+install(TARGETS indi_watcher_weather RUNTIME DESTINATION bin )
 
 ########### MBox Driver ###############
 
@@ -1229,6 +1286,29 @@ target_link_libraries(indi_eval ${NOVA_LIBRARIES} ${M_LIB} ${ZLIB_LIBRARY})
 
 install(TARGETS indi_eval RUNTIME DESTINATION bin )
 
+########### HID Test ##############
+SET(indi_hid_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/libs/indibase/hidtest.cpp
+    )
+
+IF (UNITY_BUILD)
+    ENABLE_UNITY_BUILD(indi_hid indi_hid_SRC 10 cpp)
+ENDIF ()
+
+if(APPLE)
+set(LIBS "-framework IOKit -framework CoreFoundation")
+elseif(CYGWIN)
+set(LIBS ${ICONV_LIBRARIES})
+endif(APPLE)
+
+SET(indi_hid_SRC ${indi_hid_SRC} ${hidapi_SRCS})
+
+add_executable(indi_hid_test ${indi_hid_SRC})
+
+target_link_libraries(indi_hid_test ${USB1_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${LIBS})
+
+install(TARGETS indi_hid_test RUNTIME DESTINATION bin )
+
 #################################################################################
 ## Build Examples
 
@@ -1249,6 +1329,8 @@ if (UNIX)
     INSTALL(FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/streammanager.h
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/jpegutils.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/ccvt.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/ccvt_types.h
             DESTINATION ${INCLUDE_INSTALL_DIR}/libindi/stream COMPONENT Devel)
     INSTALL(FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/encoder/encodermanager.h
@@ -1262,12 +1344,9 @@ if (UNIX)
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/stream/recorder/serrecorder.h
             DESTINATION ${INCLUDE_INSTALL_DIR}/libindi/stream/recorder COMPONENT Devel)
     if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    INSTALL(FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/ccvt.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/ccvt_types.h
+    INSTALL(FILES            
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_decode/v4l2_decode.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_decode/v4l2_builtin_decoder.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/ccvt_types.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_decode/v4l2_builtin_decoder.h            
             ${CMAKE_CURRENT_SOURCE_DIR}/libs/webcam/v4l2_colorspace.h
             DESTINATION ${INCLUDE_INSTALL_DIR}/libindi COMPONENT Devel)
     ENDIF()

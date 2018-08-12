@@ -28,8 +28,6 @@
 #include <memory>
 #include <cstring>
 
-#define POLLMS 250
-
 // We declare an auto pointer to joystick.
 std::unique_ptr<JoyStick> joystick(new JoyStick());
 
@@ -91,19 +89,19 @@ bool JoyStick::Connect()
 
     if (rc)
     {
-        DEBUG(INDI::Logger::DBG_SESSION, "Joystick is online.");
+        LOG_INFO("Joystick is online.");
 
         setupParams();
     }
     else
-        DEBUG(INDI::Logger::DBG_SESSION, "Error: cannot find Joystick device.");
+        LOG_INFO("Error: cannot find Joystick device.");
 
     return rc;
 }
 
 bool JoyStick::Disconnect()
 {
-    DEBUG(INDI::Logger::DBG_SESSION, "Joystick is offline.");
+    LOG_INFO("Joystick is offline.");
 
     return driver->Disconnect();
 }
@@ -242,6 +240,7 @@ void JoyStick::ISGetProperties(const char *dev)
     defineText(&PortTP);
     loadConfig(true, INDI::SP::DEVICE_PORT);
 
+    /*
     if (isConnected())
     {
         for (int i = 0; i < driver->getNumOfJoysticks(); i++)
@@ -250,6 +249,7 @@ void JoyStick::ISGetProperties(const char *dev)
         defineNumber(&AxisNP);
         defineSwitch(&ButtonSP);
     }
+    */
 }
 
 bool JoyStick::ISSnoopDevice(XMLEle *root)
@@ -297,7 +297,7 @@ void JoyStick::joystickEvent(int joystick_n, double mag, double angle)
     if (!isConnected())
         return;
 
-    DEBUGF(INDI::Logger::DBG_DEBUG, "joystickEvent[%d]: %g @ %g", joystick_n, mag, angle);
+    LOGF_DEBUG("joystickEvent[%d]: %g @ %g", joystick_n, mag, angle);
 
     if (mag == 0)
         JoyStickNP[joystick_n].s = IPS_IDLE;
@@ -315,7 +315,7 @@ void JoyStick::axisEvent(int axis_n, int value)
     if (!isConnected())
         return;
 
-    DEBUGF(INDI::Logger::DBG_DEBUG, "axisEvent[%d]: %d", axis_n, value);
+    LOGF_DEBUG("axisEvent[%d]: %d", axis_n, value);
 
     if (value == 0)
         AxisNP.s = IPS_IDLE;
@@ -332,7 +332,7 @@ void JoyStick::buttonEvent(int button_n, int value)
     if (!isConnected())
         return;
 
-    DEBUGF(INDI::Logger::DBG_DEBUG, "buttonEvent[%d]: %s", button_n, value > 0 ? "On" : "Off");
+    LOGF_DEBUG("buttonEvent[%d]: %s", button_n, value > 0 ? "On" : "Off");
 
     ButtonSP.s          = IPS_OK;
     ButtonS[button_n].s = (value == 0) ? ISS_OFF : ISS_ON;

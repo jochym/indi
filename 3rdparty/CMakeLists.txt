@@ -5,12 +5,17 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules/")
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake_modules/")
 include(GNUInstallDirs)
 
-## libnova.h is in /usr/local/include but it includes other files like <libnova/ln_types.h> while ln_types.h
-## is in the same directory on libnova.h. On Linux, this is fine since /usr/include is already included and therefore
-## <libnova/ln_types.h> is resolved. But on Mac it has to be explicitly added. Ideal solution would be for libnova
-## to include header files without libnova prefix since they reside as the same directory.
+## Some files like libnova.h and libusb.h are in in subdirectories of the include directory
+## For the CMAKE Modules, they find the subdirectory, so then something like ln_types.h should be #include ln_types.h
+## But some packages and drivers write their header files like this: #include libnova/ln_types.h
+## On Linux, this is fine since the top include directory such as /usr/include is already included and therefore
+## <libnova/ln_types.h> is resolved. But on Mac it its not already in the path and has to be explicitly added.
+
 if (APPLE)
+    ##This one is needed for homebrew
 include_directories( "/usr/local/include")
+    ## This one is needed for Craft
+include_directories("${CMAKE_INSTALL_PREFIX}/include")
 endif(APPLE)
 
 set(LIBRARIES_FOUND TRUE)
@@ -35,7 +40,7 @@ IF (UNIX OR APPLE)
             STRING(FIND ${SOURCE_FILE} libqhy DIR4_FOUND)
             STRING(FIND ${SOURCE_FILE} libqsi DIR5_FOUND)
             STRING(FIND ${SOURCE_FILE} libsbig DIR6_FOUND)
-            STRING(FIND ${SOURCE_FILE} fxload-libusb DIR7_FOUND)
+            STRING(FIND ${SOURCE_FILE} fxload DIR7_FOUND)
             STRING(FIND ${SOURCE_FILE} libinovasdk DIR8_FOUND)
             STRING(FIND ${SOURCE_FILE} libdspau DIR9_FOUND)
             IF (NOT ${DIR1_FOUND} EQUAL -1 OR NOT ${DIR2_FOUND} EQUAL -1 OR NOT ${DIR3_FOUND} EQUAL -1 OR NOT ${DIR4_FOUND} EQUAL -1 OR
@@ -65,7 +70,9 @@ option(WITH_FLI "Install FLI Driver" On)
 option(WITH_SBIG "Install SBIG Driver" On)
 option(WITH_INOVAPLX "Install i.Nova PLx Driver" On)
 option(WITH_APOGEE "Install Apogee Driver" On)
+option(WITH_FFMV "Install Point Grey FireFly MV Driver" On)
 option(WITH_QHY "Install QHY Driver" On)
+option(WITH_SSAG "Install Star Shoot Driver" On)
 option(WITH_GPHOTO "Install GPhoto Driver" On)
 option(WITH_QSI "Install QSI Driver" On)
 option(WITH_DUINO "Install Ariduino Driver" On)
@@ -79,25 +86,26 @@ option(WITH_RTLSDR "Install RTL-SDR Receiver" On)
 option(WITH_RADIOSIM "Install RadioSim Receiver" On)
 option(WITH_GPSNMEA "Install GPS NMEA Driver" On)
 option(WITH_ARMADILLO "Install Armadillo & Platypus Driver" On)
+option(WITH_FXLOAD "Install FX3 compatible fxload tool" Off)
+option(WITH_NIGHTSCAPE "Install Nightscape 8300 Driver" On)
+
+
+find_package(FFmpeg)
+
+if (FFMPEG_FOUND)
+    message(STATUS "Since FFMPEG was found, INDI Webcam Driver can be built")
+    option(WITH_WEBCAM "Install INDI Webcam Driver based on FFMPEG" On)
+ELSE(FFMPEG_FOUND)
+    message(STATUS "Since an up to date FFMPEG was not found, INDI Webcam Driver will not be built")
+    option(WITH_WEBCAM "Install INDI Webcam Driver based on FFMPEG" Off)
+ENDIF(FFMPEG_FOUND)
 
 # Add/remove cases for OSX
 IF (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(WITH_MI Off)
-    set(WITH_FLI Off)
-    set(WITH_SBIG Off)
     set(WITH_INOVAPLX Off)
-    set(WITH_DUINO Off)
-    set(WITH_FISHCAMP Off)
     set(WITH_GIGE Off)
-#    set(WITH_DSI Off)
-    set(WITH_MGEN Off)
-    set(WITH_RTLSDR Off)
-    set(WITH_RADIOSIM Off)
+    set(WITH_FXLOAD Off)
 ENDIF ()
-# Dsi contains invalid C++ codes what does not compile with Clang
-# IF ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "AppleClang" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-#    SET(WITH_DSI Off)
-# ENDIF ()
 # Disable apogee and qhy with gcc 4.8 and earlier versions
 IF (CMAKE_COMPILER_IS_GNUCXX AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
     SET(WITH_APOGEE Off)
@@ -155,8 +163,6 @@ SET(LIBRARIES_FOUND FALSE)
 endif (QSI_FOUND)
 endif (WITH_QSI)
 
-#if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-
 ## SBIG
 if (WITH_SBIG)
 find_package(SBIG)
@@ -201,6 +207,11 @@ SET(LIBRARIES_FOUND FALSE)
 endif (APOGEE_FOUND)
 endif(WITH_APOGEE)
 
+## Point Grey FireFly MV
+if (WITH_FFMV)
+add_subdirectory(indi-ffmv)
+endif (WITH_FFMV)
+
 ## Moravian
 if (WITH_MI)
 add_subdirectory(indi-mi)
@@ -244,6 +255,11 @@ SET(LIBRARIES_FOUND FALSE)
 endif (QHY_FOUND)
 endif (WITH_QHY)
 
+## Star Shoot Auto Guider
+if (WITH_SSAG)
+add_subdirectory(indi-ssag)
+endif (WITH_SSAG)
+
 ## GPSD
 if (WITH_GPSD)
 add_subdirectory(indi-gpsd)
@@ -280,12 +296,21 @@ if (WITH_RADIOSIM)
 add_subdirectory(indi-radiosim)
 endif (WITH_RADIOSIM)
 
-#endif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+if (WITH_ARMADILLO)
+add_subdirectory(indi-armadillo-platypus)
+endif(WITH_ARMADILLO)
 
-
-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-add_subdirectory(fxload-libusb)
+if (WITH_FXLOAD)
+add_subdirectory(fxload)
 endif()
+
+if (WITH_WEBCAM)
+add_subdirectory(indi-webcam)
+endif()
+
+if (WITH_NIGHTSCAPE)
+add_subdirectory(indi-nightscape)
+endif(WITH_NIGHTSCAPE)
 
 # Check if libraries are found. If not, we must build them, install them, THEN run CMake again to build and instal the drivers. If all the libraraies are installed, then we build and install the drivers only now.
 if (LIBRARIES_FOUND)

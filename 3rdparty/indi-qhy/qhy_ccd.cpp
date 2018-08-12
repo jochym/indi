@@ -25,6 +25,12 @@
 #include "config.h"
 #include <stream/streammanager.h>
 
+// Avoid duplicated definitions (macros previously defined in indibase)
+#undef LOG_DEBUG
+#undef LOG_INFO
+#undef LOG_WARN
+#undef LOG_ERROR
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <log4z.h>
@@ -33,7 +39,6 @@
 #include <algorithm>
 #include <math.h>
 
-#define POLLMS               1000  /* Polling time (ms) */
 #define TEMP_THRESHOLD       0.2   /* Differential temperature threshold (C)*/
 #define MAX_DEVICES          4     /* Max device cameraCount */
 
@@ -52,7 +57,7 @@ static void QhyCCDCleanup()
         delete cameras[i];
     }
 
-    //ReleaseQHYCCDResource();
+    ReleaseQHYCCDResource();
 }
 
 // Scan for the available devices
@@ -121,15 +126,16 @@ void ISInit()
     }
 #endif
 
-#if defined(OSX_EMBEDED_MODE)
-    char firmwarePath[128];
-    sprintf(firmwarePath, "%s/Contents/Resources", getenv("INDIPREFIX"));
-    OSXInitQHYCCDFirmware(firmwarePath);
-#elif defined(__APPLE__)
-    char firmwarePath[128] = "/usr/local/lib/qhy";
-    if (getenv("QHY_FIRMWARE_DIR") != NULL)
-        strncpy(firmwarePath, getenv("QHY_FIRMWARE_DIR"), 128);
-    OSXInitQHYCCDFirmware(firmwarePath);
+//On OS X, Prefer embedded App location if it exists
+#if defined(__APPLE__)
+	char driverSupportPath[128];
+        if (getenv("INDIPREFIX") != nullptr)
+		sprintf(driverSupportPath, "%s/Contents/Resources", getenv("INDIPREFIX"));
+	else
+		strncpy(driverSupportPath, "/usr/local/lib/indi", 128);
+	strncat(driverSupportPath, "/DriverSupport/qhy", 128);
+    IDLog("QHY firmware path: %s\n", driverSupportPath);
+	OSXInitQHYCCDFirmware(driverSupportPath);
 #endif
 
     std::vector<std::string> devices = GetDevicesIDs();
@@ -159,10 +165,10 @@ void ISGetProperties(const char *dev)
     for (int i = 0; i < cameraCount; i++)
     {
         QHYCCD *camera = cameras[i];
-        if (dev == NULL || !strcmp(dev, camera->name))
+        if (dev == nullptr || !strcmp(dev, camera->name))
         {
             camera->ISGetProperties(dev);
-            if (dev != NULL)
+            if (dev != nullptr)
                 break;
         }
     }
@@ -174,10 +180,10 @@ void ISNewSwitch(const char *dev, const char *name, ISState *states, char *names
     for (int i = 0; i < cameraCount; i++)
     {
         QHYCCD *camera = cameras[i];
-        if (dev == NULL || !strcmp(dev, camera->name))
+        if (dev == nullptr || !strcmp(dev, camera->name))
         {
             camera->ISNewSwitch(dev, name, states, names, num);
-            if (dev != NULL)
+            if (dev != nullptr)
                 break;
         }
     }
@@ -189,10 +195,10 @@ void ISNewText(const char *dev, const char *name, char *texts[], char *names[], 
     for (int i = 0; i < cameraCount; i++)
     {
         QHYCCD *camera = cameras[i];
-        if (dev == NULL || !strcmp(dev, camera->name))
+        if (dev == nullptr || !strcmp(dev, camera->name))
         {
             camera->ISNewText(dev, name, texts, names, num);
-            if (dev != NULL)
+            if (dev != nullptr)
                 break;
         }
     }
@@ -204,10 +210,10 @@ void ISNewNumber(const char *dev, const char *name, double values[], char *names
     for (int i = 0; i < cameraCount; i++)
     {
         QHYCCD *camera = cameras[i];
-        if (dev == NULL || !strcmp(dev, camera->name))
+        if (dev == nullptr || !strcmp(dev, camera->name))
         {
             camera->ISNewNumber(dev, name, values, names, num);
-            if (dev != NULL)
+            if (dev != nullptr)
                 break;
         }
     }
@@ -257,11 +263,6 @@ QHYCCD::QHYCCD(const char *name) : FilterInterface(this)
     setVersion(INDI_QHY_VERSION_MAJOR, INDI_QHY_VERSION_MINOR);
 
     sim = false;
-}
-
-QHYCCD::~QHYCCD()
-{
-    ReleaseQHYCCDResource();
 }
 
 const char *QHYCCD::getDefaultName()
@@ -342,7 +343,7 @@ void QHYCCD::ISGetProperties(const char *dev)
         {
             //Define the Filter Slot and name properties
             defineNumber(&FilterSlotNP);
-            if (FilterNameT != NULL)
+            if (FilterNameT != nullptr)
                 defineText(FilterNameTP);
         }
 
@@ -573,7 +574,7 @@ bool QHYCCD::Connect()
     }*/
     camhandle = OpenQHYCCD(camid);
 
-    if (camhandle != NULL)
+    if (camhandle != nullptr)
     {
         DEBUGF(INDI::Logger::DBG_SESSION, "Connected to %s.", camid);
 
@@ -716,7 +717,7 @@ bool QHYCCD::Connect()
 
         terminateThread = false;
 
-        pthread_create(&primary_thread, NULL, &streamVideoHelper, this);
+        pthread_create(&primary_thread, nullptr, &streamVideoHelper, this);
         return true;
     }
 
@@ -900,7 +901,7 @@ bool QHYCCD::StartExposure(float duration)
         return false;
     }
 
-    gettimeofday(&ExpStart, NULL);
+    gettimeofday(&ExpStart, nullptr);
     DEBUGF(INDI::Logger::DBG_DEBUG, "Taking a %g seconds frame...", ExposureRequest);
 
     InExposure = true;
@@ -1049,7 +1050,7 @@ float QHYCCD::calcTimeLeft()
     double timesince;
     double timeleft;
     struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
 
     timesince = (double)(now.tv_sec * 1000.0 + now.tv_usec / 1000) -
                 (double)(ExpStart.tv_sec * 1000.0 + ExpStart.tv_usec / 1000);
@@ -1135,42 +1136,41 @@ void QHYCCD::TimerHit()
 
                     PrimaryCCD.setExposureLeft(0);
                     InExposure = false;
-                    /* grab and save image */
+
+                    // grab and save image
                     grabImage();
                 }
             }
         }
         else
         {
-            DEBUGF(INDI::Logger::DBG_DEBUG, "Exposure in progress: Time left %ld", timeleft);
+            PrimaryCCD.setExposureLeft(timeleft);
             SetTimer(POLLMS);
         }
-
-        PrimaryCCD.setExposureLeft(timeleft);
     }
 }
 
-IPState QHYCCD::GuideNorth(float duration)
+IPState QHYCCD::GuideNorth(uint32_t ms)
 {
-    ControlQHYCCDGuide(camhandle, 1, duration);
+    ControlQHYCCDGuide(camhandle, 1, ms);
     return IPS_OK;
 }
 
-IPState QHYCCD::GuideSouth(float duration)
+IPState QHYCCD::GuideSouth(uint32_t ms)
 {
-    ControlQHYCCDGuide(camhandle, 2, duration);
+    ControlQHYCCDGuide(camhandle, 2, ms);
     return IPS_OK;
 }
 
-IPState QHYCCD::GuideEast(float duration)
+IPState QHYCCD::GuideEast(uint32_t ms)
 {
-    ControlQHYCCDGuide(camhandle, 0, duration);
+    ControlQHYCCDGuide(camhandle, 0, ms);
     return IPS_OK;
 }
 
-IPState QHYCCD::GuideWest(float duration)
+IPState QHYCCD::GuideWest(uint32_t ms)
 {
-    ControlQHYCCDGuide(camhandle, 3, duration);
+    ControlQHYCCDGuide(camhandle, 3, ms);
     return IPS_OK;
 }
 
@@ -1279,7 +1279,7 @@ bool QHYCCD::ISNewNumber(const char *dev, const char *name, double values[], cha
             }
             DEBUGF(INDI::Logger::DBG_SESSION, "Current %s value %f", GainNP.name, GainN[0].value);
             GainNP.s = IPS_OK;
-            IDSetNumber(&GainNP, NULL);
+            IDSetNumber(&GainNP, nullptr);
             return true;
         }
 
@@ -1289,7 +1289,7 @@ bool QHYCCD::ISNewNumber(const char *dev, const char *name, double values[], cha
             SetQHYCCDParam(camhandle, CONTROL_OFFSET, OffsetN[0].value);
             DEBUGF(INDI::Logger::DBG_SESSION, "Current %s value %f", OffsetNP.name, OffsetN[0].value);
             OffsetNP.s = IPS_OK;
-            IDSetNumber(&OffsetNP, NULL);
+            IDSetNumber(&OffsetNP, nullptr);
             saveConfig(true, OffsetNP.name);
             return true;
         }
@@ -1300,7 +1300,7 @@ bool QHYCCD::ISNewNumber(const char *dev, const char *name, double values[], cha
             SetQHYCCDParam(camhandle, CONTROL_SPEED, SpeedN[0].value);
             DEBUGF(INDI::Logger::DBG_SESSION, "Current %s value %f", SpeedNP.name, SpeedN[0].value);
             SpeedNP.s = IPS_OK;
-            IDSetNumber(&SpeedNP, NULL);
+            IDSetNumber(&SpeedNP, nullptr);
             saveConfig(true, SpeedNP.name);
             return true;
         }
@@ -1311,7 +1311,7 @@ bool QHYCCD::ISNewNumber(const char *dev, const char *name, double values[], cha
             SetQHYCCDParam(camhandle, CONTROL_USBTRAFFIC, USBTrafficN[0].value);
             DEBUGF(INDI::Logger::DBG_SESSION, "Current %s value %f", USBTrafficNP.name, USBTrafficN[0].value);
             USBTrafficNP.s = IPS_OK;
-            IDSetNumber(&USBTrafficNP, NULL);
+            IDSetNumber(&USBTrafficNP, nullptr);
             saveConfig(true, USBTrafficNP.name);
             return true;
         }
@@ -1328,10 +1328,10 @@ void QHYCCD::setCooler(bool enable)
         CoolerS[0].s = ISS_ON;
         CoolerS[1].s = ISS_OFF;
         CoolerSP.s   = IPS_OK;
-        IDSetSwitch(&CoolerSP, NULL);
+        IDSetSwitch(&CoolerSP, nullptr);
 
         CoolerNP.s = IPS_BUSY;
-        IDSetNumber(&CoolerNP, NULL);
+        IDSetNumber(&CoolerNP, nullptr);
         DEBUG(INDI::Logger::DBG_SESSION, "Cooler on.");
 
         coolerEnabled = true;
@@ -1346,13 +1346,13 @@ void QHYCCD::setCooler(bool enable)
         CoolerSP.s   = IPS_IDLE;
         CoolerS[0].s = ISS_OFF;
         CoolerS[1].s = ISS_ON;
-        IDSetSwitch(&CoolerSP, NULL);
+        IDSetSwitch(&CoolerSP, nullptr);
 
         CoolerNP.s = IPS_IDLE;
-        IDSetNumber(&CoolerNP, NULL);
+        IDSetNumber(&CoolerNP, nullptr);
 
         TemperatureNP.s = IPS_IDLE;
-        IDSetNumber(&TemperatureNP, NULL);
+        IDSetNumber(&TemperatureNP, nullptr);
         DEBUG(INDI::Logger::DBG_SESSION, "Cooler off.");
     }
 }
@@ -1402,7 +1402,7 @@ void QHYCCD::updateTemperature()
         CoolerSP.s   = IPS_OK;
         CoolerS[0].s = ISS_ON;
         CoolerS[1].s = ISS_OFF;
-        IDSetSwitch(&CoolerSP, NULL);
+        IDSetSwitch(&CoolerSP, nullptr);
     }
     else if (coolpower <= 0 && CoolerS[0].s == ISS_ON)
     {
@@ -1410,7 +1410,7 @@ void QHYCCD::updateTemperature()
         CoolerSP.s   = IPS_IDLE;
         CoolerS[0].s = ISS_OFF;
         CoolerS[1].s = ISS_ON;
-        IDSetSwitch(&CoolerSP, NULL);
+        IDSetSwitch(&CoolerSP, nullptr);
     }
 
     if (TemperatureNP.s == IPS_BUSY && fabs(TemperatureN[0].value - TemperatureRequest) <= TEMP_THRESHOLD)
@@ -1425,8 +1425,8 @@ void QHYCCD::updateTemperature()
         nextPoll = TEMPERATURE_BUSY_MS;
 */
 
-    IDSetNumber(&TemperatureNP, NULL);
-    IDSetNumber(&CoolerNP, NULL);
+    IDSetNumber(&TemperatureNP, nullptr);
+    IDSetNumber(&CoolerNP, nullptr);
 
     temperatureID = IEAddTimer(nextPoll, QHYCCD::updateTemperatureHelper, this);
 }

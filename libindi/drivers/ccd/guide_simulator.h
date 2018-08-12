@@ -63,10 +63,10 @@ protected:
     int DrawImageStar(INDI::CCDChip *targetChip, float, float, float, float ExposureTime);
     int AddToPixel(INDI::CCDChip *targetChip, int, int, int);
 
-    IPState GuideNorth(float) override;
-    IPState GuideSouth(float) override;
-    IPState GuideEast(float) override;
-    IPState GuideWest(float) override;
+    IPState GuideNorth(uint32_t) override;
+    IPState GuideSouth(uint32_t) override;
+    IPState GuideEast(uint32_t) override;
+    IPState GuideWest(uint32_t) override;
 
     virtual bool saveConfigItems(FILE *fp) override;
     virtual void activeDevicesUpdated() override;
@@ -105,6 +105,9 @@ protected:
     float k { 0 };
     float z { 0 };
 
+    float guideNSOffset {0};
+    float guideWEOffset {0};
+
     bool AbortPrimaryFrame { false };
 
     /// Guide rate is 7 arcseconds per second
@@ -114,8 +117,8 @@ protected:
     float PEPeriod { 8*60 };
     float PEMax { 11 };
 
-    double raPE { 0 };
-    double decPE { 0 };
+    double currentRA { 0 };
+    double currentDE { 0 };
     bool usePE { false };
     time_t RunStart;
 

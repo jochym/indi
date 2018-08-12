@@ -98,5 +98,8 @@ class SynscanMount : public INDI::Telescope
     std::string AlignmentStatus;
     std::string GotoStatus;
     std::string MountPointingStatus;
+    std::string TrackingStatus;
     std::string TrackingMode;
+
+    static const uint8_t MAX_SYN_BUF = 64;
 };

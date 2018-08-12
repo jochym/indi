@@ -21,7 +21,6 @@
 
 #include "focuslynxbase.h"
 
-#define POLLMS 1000
 #define FOCUSNAMEF1 "FocusLynx F1"
 #define FOCUSNAMEF2 "FocusLynx F2"
 
@@ -46,15 +45,15 @@ class FocusLynxF1 : public FocusLynxBase
     bool getHubConfig();
 
     // HUB Main Parameter
-    IText HubT[2];
+    IText HubT[2] {};
     ITextVectorProperty HubTP;
 
     // Network Wired Info
-    IText WiredT[2];
+    IText WiredT[2] {};
     ITextVectorProperty WiredTP;
 
     //Network WIFI Info
-    IText WifiT[9];
+    IText WifiT[9] {};
     ITextVectorProperty WifiTP;
 };
 

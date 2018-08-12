@@ -169,7 +169,7 @@ void DSI::Device::initImager(const char *devname)
     int rc = 0;
     int cnt = 0;
     int i = 0;
-    libusb_device **list = NULL;
+    libusb_device **list = nullptr;
     struct libusb_device_descriptor desc;
     std::string bus_name, device_name;
 
@@ -185,15 +185,15 @@ void DSI::Device::initImager(const char *devname)
 
     int retcode = 0;
 
-    if ((rc = libusb_init(NULL)))
+    if ((rc = libusb_init(nullptr)))
     {
         throw dsi_exception(libusb_error_name(rc));
     }
 
     // Upload firmware in case of MacOS
     #ifdef __APPLE__
-    cnt = libusb_get_device_list(NULL, &list);
-    handle = NULL;
+    cnt = libusb_get_device_list(nullptr, &list);
+    handle = nullptr;
     for (i = 0; i < cnt; ++i)
     {
         if (!libusb_get_device_descriptor(list[i], &desc))
@@ -205,12 +205,15 @@ void DSI::Device::initImager(const char *devname)
                 {
                     libusb_kernel_driver_active(handle, 0);
                     libusb_claim_interface(handle, 0);
-                    char hexpath[MAXRBUF] = "/usr/local/lib/firmware/meade-deepskyimager.hex";
-                    // Override in case an environment variable is defined.
-                    if (getenv("DSI_FIRMWARE_DIR") != NULL)
-                        snprintf(hexpath, MAXRBUF, "%s/meade-deepskyimager.hex", getenv("DSI_FIRMWARE_DIR"));
+                    char driverSupportPath[MAXRBUF];
+                    //On OS X, Prefer embedded App location if it exists
+                    if (getenv("INDIPREFIX") != nullptr)
+                    	snprintf(driverSupportPath, MAXRBUF, "%s/Contents/Resources", getenv("INDIPREFIX"));
+                    else
+                    	strncpy(driverSupportPath, "/usr/local/lib/indi", MAXRBUF);
+                    strncat(driverSupportPath, "/DriverSupport/dsi/meade-deepskyimager.hex", MAXRBUF);
                     char errmsg[MAXRBUF];
-                    if (fx2_ram_download(handle, hexpath, 1, errmsg))
+                    if (fx2_ram_download(handle, driverSupportPath, 1, errmsg))
                         throw dsi_exception(std::string("failed to upload firmware: ") + errmsg);
                     libusb_close(handle);
                 }
@@ -218,12 +221,12 @@ void DSI::Device::initImager(const char *devname)
         }
      }
     libusb_free_device_list(list, 0);
-    list=NULL;
+    list=nullptr;
     #endif
 
-    cnt = libusb_get_device_list(NULL, &list);
+    cnt = libusb_get_device_list(nullptr, &list);
 
-    handle = NULL;
+    handle = nullptr;
     for (i = 0; i < cnt; ++i)
     {
         if (!libusb_get_device_descriptor(list[i], &desc))
@@ -233,7 +236,7 @@ void DSI::Device::initImager(const char *devname)
                 dev = list[i];
                 if (libusb_open(dev, &handle))
                 {
-                    dev = NULL;
+                    dev = nullptr;
                 }
                 break;
             }            

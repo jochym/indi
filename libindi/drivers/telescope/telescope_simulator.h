@@ -58,10 +58,10 @@ class ScopeSim : public INDI::Telescope, public INDI::GuiderInterface
     virtual bool MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command) override;
     virtual bool Abort() override;
 
-    virtual IPState GuideNorth(float ms) override;
-    virtual IPState GuideSouth(float ms) override;
-    virtual IPState GuideEast(float ms) override;
-    virtual IPState GuideWest(float ms) override;
+    virtual IPState GuideNorth(uint32_t ms) override;
+    virtual IPState GuideSouth(uint32_t ms) override;
+    virtual IPState GuideEast(uint32_t ms) override;
+    virtual IPState GuideWest(uint32_t ms) override;
     virtual bool updateLocation(double latitude, double longitude, double elevation) override;
 
     virtual bool SetTrackMode(uint8_t mode) override;
@@ -94,6 +94,7 @@ class ScopeSim : public INDI::Telescope, public INDI::GuiderInterface
     INumber GuideRateN[2];
     INumberVectorProperty GuideRateNP;
 
+#ifdef USE_EQUATORIAL_PE
     INumberVectorProperty EqPENV;
     INumber EqPEN[2];
 
@@ -102,4 +103,5 @@ class ScopeSim : public INDI::Telescope, public INDI::GuiderInterface
 
     ISwitch PEErrWES[2];
     ISwitchVectorProperty PEErrWESP;
+#endif
 };

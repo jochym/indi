@@ -29,8 +29,6 @@
 #include "ffmv_ccd.h"
 #include "config.h"
 
-const int POLLMS = 250;
-
 std::unique_ptr<FFMVCCD> ffmvCCD(new FFMVCCD());
 
 /**
@@ -132,11 +130,6 @@ bool FFMVCCD::Connect()
 {
     dc1394camera_list_t *list;
     dc1394error_t err;
-    bool supported;
-    bool settings_valid;
-    uint32_t val;
-    dc1394format7mode_t fm7;
-    dc1394feature_info_t feature;
     float min, max;
 
     dc1394 = dc1394_new();
@@ -332,6 +325,8 @@ bool FFMVCCD::initProperties()
     IUFillSwitchVector(&GainSP, GainS, 2, getDeviceName(), "GAIN", "Gain", IMAGE_SETTINGS_TAB, IP_WO, ISR_NOFMANY, 0,
                        IPS_IDLE);
 
+    setDefaultPollingPeriod(250);
+
     return true;
 }
 
@@ -381,14 +376,9 @@ void FFMVCCD::setupParams()
 ***************************************************************************************/
 bool FFMVCCD::StartExposure(float duration)
 {
-    FILE *imagefile;
     dc1394error_t err;
-    dc1394video_frame_t *frame;
-    int i;
+    dc1394video_frame_t *frame;    
     int ms;
-    unsigned int val;
-    float gain = 1.0;
-    uint32_t uwidth, uheight;
     float sub_length;
     float fval;
 
@@ -402,17 +392,13 @@ bool FFMVCCD::StartExposure(float duration)
     PrimaryCCD.setBPP(16);
     PrimaryCCD.setExposureDuration(duration);
 
-    gettimeofday(&ExpStart, NULL);
+    gettimeofday(&ExpStart, nullptr);
 
     InExposure = true;
     IDMessage(getDeviceName(), "Exposure has begun.");
 
     // Let's get a pointer to the frame buffer
     uint8_t *image = PrimaryCCD.getFrameBuffer();
-
-    // Get width and height
-    int width  = PrimaryCCD.getSubW() / PrimaryCCD.getBinX();
-    int height = PrimaryCCD.getSubH() / PrimaryCCD.getBinY();
 
     memset(image, 0, PrimaryCCD.getFrameBufferSize());
 
@@ -496,7 +482,7 @@ float FFMVCCD::CalcTimeLeft()
     double timesince;
     double timeleft;
     struct timeval now;
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
 
     timesince = (double)(now.tv_sec * 1000.0 + now.tv_usec / 1000) -
                 (double)(ExpStart.tv_sec * 1000.0 + ExpStart.tv_usec / 1000);
@@ -672,7 +658,7 @@ void FFMVCCD::grabImage()
     *  stop data transmission
     *-----------------------------------------------------------------------*/
 
-    gettimeofday(&start, NULL);
+    gettimeofday(&start, nullptr);
     for (sub = 0; sub < sub_count; ++sub)
     {
         IDMessage(getDeviceName(), "Getting sub %d of %d", sub, sub_count);
@@ -710,7 +696,7 @@ void FFMVCCD::grabImage()
     }
     err = dc1394_video_set_transmission(dcam, DC1394_OFF);
     IDMessage(getDeviceName(), "Download complete.");
-    gettimeofday(&end, NULL);
+    gettimeofday(&end, nullptr);
     IDMessage(getDeviceName(), "Download took %d uS",
               (int)((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec)));
 

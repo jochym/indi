@@ -47,8 +47,6 @@
 #define VERSION                 1
 #define SUBVERSION              3
 
-#define POLLMS  1000
-
 class FocusLynxBase : public INDI::Focuser
 {
   public:
@@ -234,7 +232,7 @@ class FocusLynxBase : public INDI::Focuser
     INumberVectorProperty MaxTravelNP;
 
     // Focus name configure in the HUB
-    IText HFocusNameT[1];
+    IText HFocusNameT[1] {};
     ITextVectorProperty HFocusNameTP;
 
     bool isAbsolute;

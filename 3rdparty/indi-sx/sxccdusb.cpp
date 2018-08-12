@@ -117,7 +117,13 @@
 #define BULK_COMMAND_TIMEOUT 2000
 #define BULK_DATA_TIMEOUT    10000
 
-#define CHUNK_SIZE (10 * 1024 * 1024)
+#ifdef __arm__
+#define CHUNK_SIZE (4 * 1024 * 1024)
+//#warning "ARM mode, 4MB CHUNK_SIZE"
+#else
+#define CHUNK_SIZE (10*1024*1024)
+//#warning "Intel mode, 10MB CHUNK_SIZE"
+#endif
 
 #if 1
 #define TRACE(c) (c)
@@ -166,9 +172,9 @@ static struct
                 { 0x509, "SuperStar", 0 },
                 { 0x525, "UltraStar", 0 },
                 { 0x200, "MX Camera", 0 },
-                { 0, NULL, 0 } };
+                { 0, nullptr, 0 } };
 
-libusb_context *ctx = NULL;
+libusb_context *ctx = nullptr;
 
 #ifndef USB1_HAS_LIBUSB_ERROR_NAME
 static char *libusb_error_name(int rc)
@@ -193,7 +199,7 @@ void log(bool debug, const char *fmt, ...)
 
 static void init()
 {
-    if (ctx == NULL)
+    if (ctx == nullptr)
     {
         int rc = libusb_init(&ctx);
         if (rc < 0)
@@ -223,6 +229,11 @@ bool sxIsInterlaced(short model)
 bool sxIsColor(short model)
 {
     return model & 0x80;
+}
+
+bool sxIsICX453(short model)
+{
+    return model == 0x59;
 }
 
 int sxList(DEVICE *sxDevices, const char **names, int maxCount)
@@ -331,7 +342,7 @@ int sxOpen(HANDLE *sxHandles)
 void sxClose(HANDLE *sxHandle)
 {
     libusb_close(*sxHandle);
-    *sxHandle = NULL;
+    *sxHandle = nullptr;
     DEBUG(log(true, "sxClose: libusb_close\n"));
 }
 

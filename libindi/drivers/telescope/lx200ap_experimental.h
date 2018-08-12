@@ -30,13 +30,19 @@ class LX200AstroPhysicsExperimental : public LX200Generic
     LX200AstroPhysicsExperimental();
     ~LX200AstroPhysicsExperimental() {}
 
-    typedef enum { MCV_E, MCV_F, MCV_G, MCV_H, MCV_I, MCV_J, MCV_L, MCV_P, MCV_UNKNOWN} ControllerVersion;
+    typedef enum { MCV_E, MCV_F, MCV_G, MCV_H, MCV_I, MCV_J, MCV_K_UNUSED,
+                   MCV_L, MCV_M, MCV_N, MCV_O, MCV_P, MCV_Q, MCV_R, MCV_S,
+                   MCV_T, MCV_U, MCV_V, MCV_UNKNOWN} ControllerVersion;
     typedef enum { GTOCP1=1, GTOCP2, GTOCP3, GTOCP4, GTOCP_UNKNOWN} ServoVersion;
 
+    typedef enum { PARK_LAST=0, PARK_CUSTOM=0, PARK_PARK1=1, PARK_PARK2=2, PARK_PARK3=3, PARK_PARK4=4} ParkPosition;
+
+    virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
     virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
-    virtual void ISGetProperties(const char *dev) override;
+    virtual void ISGetProperties(const char *dev) override;    
 
   protected:
+
     virtual const char *getDefaultName() override;
     virtual bool initProperties() override;
     virtual bool updateProperties() override;    
@@ -44,6 +50,7 @@ class LX200AstroPhysicsExperimental : public LX200Generic
     virtual bool ReadScopeStatus() override;
     virtual bool Handshake() override;
     virtual bool Disconnect() override;
+    virtual bool Connect() override;
 
     // Parking
     virtual bool SetCurrentPark() override;
@@ -57,7 +64,14 @@ class LX200AstroPhysicsExperimental : public LX200Generic
     virtual bool updateLocation(double latitude, double longitude, double elevation) override;
     virtual bool SetSlewRate(int index) override;
 
-    virtual int  SendPulseCmd(int direction, int duration_msec) override;
+    // Guide Commands
+    virtual IPState GuideNorth(uint32_t ms) override;
+    virtual IPState GuideSouth(uint32_t ms) override;
+    virtual IPState GuideEast(uint32_t ms) override;
+    virtual IPState GuideWest(uint32_t ms) override;
+    virtual int  SendPulseCmd(int8_t direction, uint32_t duration_msec) override;
+    virtual bool GuideNS(INDI_DIR_NS dir, TelescopeMotionCommand command);
+    virtual bool GuideWE(INDI_DIR_WE dir, TelescopeMotionCommand command);
 
     virtual bool getUTFOffset(double *offset) override;
 
@@ -95,7 +109,16 @@ class LX200AstroPhysicsExperimental : public LX200Generic
     ISwitch APGuideSpeedS[3];
     ISwitchVectorProperty APGuideSpeedSP;
 
-    IText VersionT[1];
+    ISwitch UnparkFromS[5];
+    ISwitchVectorProperty UnparkFromSP;
+
+    ISwitch ParkToS[5];
+    ISwitchVectorProperty ParkToSP;
+
+    INumberVectorProperty MeridianDelayNP;
+    INumber MeridianDelayN[1];
+
+    IText VersionT[1] {};
     ITextVectorProperty VersionInfo;
 
   private:
@@ -103,6 +126,12 @@ class LX200AstroPhysicsExperimental : public LX200Generic
 
     // Side of pier
     void syncSideOfPier();
+    bool IsMountInitialized(bool *initialized);
+    bool IsMountParked(bool *isParked);
+    bool getMountStatus(bool *isParked);
+    bool getFirmwareVersion(void);
+    bool calcParkPosition(ParkPosition pos, double *parkAlt, double *parkAz);
+    void disclaimerMessage(void);
 
     bool timeUpdated=false, locationUpdated=false;
     ControllerVersion firmwareVersion = MCV_UNKNOWN;
@@ -112,6 +141,12 @@ class LX200AstroPhysicsExperimental : public LX200Generic
     double lastRA=0, lastDE=0;
     double lastAZ=0, lastAL=0;
 
+    //int GuideNSTID;
+    //int GuideWETID;
+
     bool motionCommanded=false;
     bool mountInitialized=false;
+    bool mountParked=false;
+
+    int rememberSlewRate = { -1 };
 };
