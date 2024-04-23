@@ -53,6 +53,7 @@ class NightCrawler : public INDI::Focuser, public INDI::RotatorInterface
         virtual IPState MoveRotator(double angle) override;
         virtual bool SyncRotator(double angle) override;
         virtual bool AbortRotator() override;
+        virtual bool ReverseRotator(bool enabled) override;
 
         // Misc.
         virtual bool saveConfigItems(FILE *fp) override;
@@ -97,57 +98,45 @@ class NightCrawler : public INDI::Focuser, public INDI::RotatorInterface
         bool setSleepBrightness(uint8_t value);
 
 
-        INumber GotoAuxN[1];
-        INumberVectorProperty GotoAuxNP;
+        INDI::PropertyNumber GotoAuxNP {1};
 
-        INumber SyncFocusN[1];
-        INumberVectorProperty SyncFocusNP;
+        INDI::PropertyNumber SyncFocusNP {1};
 
-        INumber SyncAuxN[1];
-        INumberVectorProperty SyncAuxNP;
+        INDI::PropertyNumber SyncAuxNP {1};
 
-        ISwitch AbortAuxS[1];
-        ISwitchVectorProperty AbortAuxSP;
+        INDI::PropertySwitch AbortAuxSP {1};
 
-        INumber VoltageN[1];
-        INumberVectorProperty VoltageNP;
+        INDI::PropertyNumber VoltageNP {1};
 
-        INumber TemperatureN[1];
-        INumberVectorProperty TemperatureNP;
+        INDI::PropertyNumber TemperatureNP {1};
 
         INumber TemperatureOffsetN[1];
         INumberVectorProperty TemperatureOffsetNP;
 
-        INumber FocusStepDelayN[1];
-        INumberVectorProperty FocusStepDelayNP;
-        INumber RotatorStepDelayN[1];
-        INumberVectorProperty RotatorStepDelayNP;
-        INumber AuxStepDelayN[1];
-        INumberVectorProperty AuxStepDelayNP;
+        INDI::PropertyNumber FocusStepDelayNP {1};
+        INDI::PropertyNumber RotatorStepDelayNP {1};
+        INDI::PropertyNumber AuxStepDelayNP {1};
 
-        ILight LimitSwitchL[3];
-        ILightVectorProperty LimitSwitchLP;
+        INDI::PropertyLight LimitSwitchLP {3};
         enum { ROTATION_SWITCH, OUT_SWITCH, IN_SWITCH };
 
-        ISwitch HomeSelectionS[3];
-        ISwitchVectorProperty HomeSelectionSP;
-        ISwitch FindHomeS[1];
-        ISwitchVectorProperty FindHomeSP;
+        INDI::PropertySwitch HomeSelectionSP {3};
+        INDI::PropertySwitch FindHomeSP {1};
 
-        ISwitch EncoderS[2];
-        ISwitchVectorProperty EncoderSP;
+        INDI::PropertySwitch EncoderSP {2};
 
-        INumber BrightnessN[2];
-        INumberVectorProperty BrightnessNP;
+        INDI::PropertyNumber BrightnessNP {2};
         enum { BRIGHTNESS_DISPLAY, BRIGHTNESS_SLEEP };
 
         // Rotator Steps
-        INumber RotatorAbsPosN[1];
-        INumberVectorProperty RotatorAbsPosNP;
+        INDI::PropertyNumber RotatorAbsPosNP {1};
+
+        INDI::PropertyNumber CustomRotatorStepNP {1};
 
         double lastTemperature { 0 };
         double lastVoltage { 0 };
-        double ticksPerDegree { 0 };
+        int32_t m_RotatorTicksPerDegree { 0 };
+        int32_t m_RotatorStepsPerRevolution {0};
         double lastFocuserPosition { 0 };
         double lastRotatorPosition { 0 };
         double lastAuxPosition { 0 };

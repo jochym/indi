@@ -9,9 +9,9 @@ include(CheckCCompilerFlag)
 # Build Position Independent Code
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# C++14 Support
+# C++17 Support
 if (NOT ANDROID)
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 endif(NOT ANDROID)
 
@@ -64,9 +64,6 @@ IF (UNIX OR APPLE)
         SET(COMP_FLAGS "${COMP_FLAGS} -Werror")
     ENDIF ()
     # Omit problematic warnings
-    IF ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-        SET(COMP_FLAGS "${COMP_FLAGS} -Wno-unused-but-set-variable")
-    ENDIF ()
     IF ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 6.9.9)
         SET(COMP_FLAGS "${COMP_FLAGS} -Wno-format-truncation")
     ENDIF ()

@@ -193,7 +193,7 @@ bool TemmaMount::updateProperties()
         defineProperty(&GuideNSNP);
         defineProperty(&GuideWENP);
 
-        // Load location so that it could trigger mount initiailization
+        // Load location so that it could trigger mount initialization
         loadConfig(true, "GEOGRAPHIC_COORD");
 
     }
@@ -426,7 +426,8 @@ bool TemmaMount::ReadScopeStatus()
         RaDec.dec = currentDEC;
         INDI::AlignmentSubsystem::TelescopeDirectionVector TDV = TelescopeDirectionVectorFromLocalHourAngleDeclination(RaDec);
         //AlignmentSubsystem::TelescopeDirectionVector TDV = TelescopeDirectionVectorFromEquatorialCoordinates(RaDec);
-        DEBUGF(INDI::AlignmentSubsystem::DBG_ALIGNMENT, "Status: Mnt. Algnt. %s LST %lf RA %lf DEC %lf HA %lf TDV(x %lf y %lf z %lf)",
+        DEBUGF(INDI::AlignmentSubsystem::DBG_ALIGNMENT,
+               "Status: Mnt. Algnt. %s LST %lf RA %lf DEC %lf HA %lf TDV(x %lf y %lf z %lf)",
                maligns[GetApproximateMountAlignment()], lst, currentRA, currentDEC, RaDec.ra, TDV.x, TDV.y, TDV.z);
 
         aligned = true;
@@ -434,11 +435,15 @@ bool TemmaMount::ReadScopeStatus()
         if (!TransformTelescopeToCelestial(TDV, alignedRA, alignedDEC))
         {
             aligned = false;
-            DEBUGF(INDI::AlignmentSubsystem::DBG_ALIGNMENT, "Failed TransformTelescopeToCelestial: Scope RA=%g Scope DE=%f, Aligned RA=%f DE=%f", currentRA, currentDEC, alignedRA, alignedDEC);
+            DEBUGF(INDI::AlignmentSubsystem::DBG_ALIGNMENT,
+                   "Failed TransformTelescopeToCelestial: Scope RA=%g Scope DE=%f, Aligned RA=%f DE=%f", currentRA, currentDEC, alignedRA,
+                   alignedDEC);
         }
         else
         {
-            DEBUGF(INDI::AlignmentSubsystem::DBG_ALIGNMENT, "TransformTelescopeToCelestial: Scope RA=%f Scope DE=%f, Aligned RA=%f DE=%f", currentRA, currentDEC, alignedRA, alignedDEC);
+            DEBUGF(INDI::AlignmentSubsystem::DBG_ALIGNMENT,
+                   "TransformTelescopeToCelestial: Scope RA=%f Scope DE=%f, Aligned RA=%f DE=%f", currentRA, currentDEC, alignedRA,
+                   alignedDEC);
         }
     }
 
@@ -484,9 +489,9 @@ bool TemmaMount::Sync(double ra, double dec)
     targetDEC = dec;
 
     /*  sync involves jumping thru considerable hoops
-    first we have to set local sideral time
+    first we have to set local sidereal time
     then we have to send a Z
-    then we set local sideral time again
+    then we set local sidereal time again
     and finally we send the co-ordinates we are syncing on
     */
     LOG_DEBUG("Sending LST --> Z --> LST before Sync.");
@@ -534,7 +539,7 @@ bool TemmaMount::Goto(double ra, double dec)
     targetDEC = dec;
 
     /*  goto involves hoops, but, not as many as a sync
-        first set sideral time
+        first set sidereal time
         then issue the goto command
     */
     if (MotorStatus == false)
@@ -870,7 +875,7 @@ bool TemmaMount::updateLocation(double latitude, double longitude, double elevat
 
         //  We were NOT initialized, so, in case there is not park position set
         //  Sync to the position of bar vertical, telescope pointed at pole
-        LOGF_DEBUG("Temma is initilized. Latitude: %.2f LST: %.2f", latitude, lst);
+        LOGF_DEBUG("Temma is initialized. Latitude: %.2f LST: %.2f", latitude, lst);
         SetAxis1Park(lst);
 
         LOGF_INFO("Syncing to default home position %4.2f %4.2f", GetAxis1Park(), GetAxis2Park());
@@ -987,7 +992,7 @@ INDI::IEquatorialCoordinates TemmaMount::SkyToTelescope(double ra, double dec)
         //  to using raw co-ordinates from the mount
         if (TransformCelestialToTelescope(ra, dec, 0.0, TDV))
         {
-            /*  Initial attemp, using RA/DEC co-ordinates talking to alignment system
+            /*  Initial attempt, using RA/DEC co-ordinates talking to alignment system
             EquatorialCoordinatesFromTelescopeDirectionVector(TDV,eq);
             RightAscension=eq.ra*24.0/360;
             Declination=eq.dec;
@@ -1287,7 +1292,7 @@ void TemmaMount::mountSim()
     ltv = tv;
     da  = TEMMA_SLEWRATE * dt;
 
-    /* Process per current state. We check the state of EQUATORIAL_COORDS and act acoordingly */
+    /* Process per current state. We check the state of EQUATORIAL_COORDS and act accordingly */
     switch (TrackState)
     {
 

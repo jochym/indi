@@ -81,7 +81,7 @@ bool SimpleReceiver::initProperties()
 
 /********************************************************************************************
 ** INDI is asking us to update the properties because there is a change in CONNECTION status
-** This fucntion is called whenever the device is connected or disconnected.
+** This function is called whenever the device is connected or disconnected.
 *********************************************************************************************/
 bool SimpleReceiver::updateProperties()
 {
@@ -110,7 +110,7 @@ bool SimpleReceiver::paramsUpdated(float sr, float freq, float bps, float bw, fl
     INDI_UNUSED(sr);
     INDI_UNUSED(bw);
     INDI_UNUSED(gain);
-	return true;
+    return true;
 }
 
 /**************************************************************************************
@@ -171,7 +171,10 @@ float SimpleReceiver::CalcTimeLeft()
 {
     double timesince;
     double timeleft;
-    struct timeval now { 0, 0 };
+    struct timeval now
+    {
+        0, 0
+    };
 
     gettimeofday(&now, nullptr);
 
@@ -229,7 +232,7 @@ void SimpleReceiver::TimerHit()
             /* If target temperature is higher, then increase current Receiver temperature */
             if (currentReceiverTemperature < TemperatureRequest)
                 currentReceiverTemperature++;
-            /* If target temperature is lower, then decrese current Receiver temperature */
+            /* If target temperature is lower, then decrease current Receiver temperature */
             else if (currentReceiverTemperature > TemperatureRequest)
                 currentReceiverTemperature--;
             /* If they're equal, stop updating */
@@ -260,8 +263,8 @@ void SimpleReceiver::grabFrame()
     // Set length of continuum
     int len  = getSampleRate() * getIntegrationTime() * getBPS() / 8;
     setBufferSize(len);
- 
-   // Let's get a pointer to the frame buffer
+
+    // Let's get a pointer to the frame buffer
     uint8_t *continuum = getBuffer();
 
     // Fill buffer with random pattern

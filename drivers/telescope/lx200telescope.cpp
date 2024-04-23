@@ -2,6 +2,7 @@
  * Standard LX200 implementation.
 
    Copyright (C) 2003 - 2018 Jasem Mutlaq (mutlaqja@ikarustech.com)
+   Minor changes Copyright (C) 2021 James Lancaster
 
    This library is free software;
    you can redistribute it and / or
@@ -105,19 +106,24 @@ bool LX200Telescope::initProperties()
     IUFillNumberVector(&TrackFreqNP, TrackFreqN, 1, getDeviceName(), "Tracking Frequency", "", MOTION_TAB, IP_RW, 0,
                        IPS_IDLE);
 
-    IUFillSwitch(&UsePulseCmdS[0], "Off", "", ISS_OFF);
-    IUFillSwitch(&UsePulseCmdS[1], "On", "", ISS_ON);
+    IUFillSwitch(&UsePulseCmdS[0], "Off", "Off", ISS_OFF);
+    IUFillSwitch(&UsePulseCmdS[1], "On", "On", ISS_ON);
     IUFillSwitchVector(&UsePulseCmdSP, UsePulseCmdS, 2, getDeviceName(), "Use Pulse Cmd", "", MAIN_CONTROL_TAB, IP_RW,
                        ISR_1OFMANY, 0, IPS_IDLE);
 
-    IUFillSwitch(&SiteS[0], "Site 1", "", ISS_ON);
-    IUFillSwitch(&SiteS[1], "Site 2", "", ISS_OFF);
-    IUFillSwitch(&SiteS[2], "Site 3", "", ISS_OFF);
-    IUFillSwitch(&SiteS[3], "Site 4", "", ISS_OFF);
+    int selectedSite = 0;
+    IUGetConfigOnSwitchIndex(getDeviceName(), "Sites", &selectedSite);
+    IUFillSwitch(&SiteS[0], "Site 1", "Site 1", selectedSite == 0 ? ISS_ON : ISS_OFF);
+    IUFillSwitch(&SiteS[1], "Site 2", "Site 2", selectedSite == 1 ? ISS_ON : ISS_OFF);
+    IUFillSwitch(&SiteS[2], "Site 3", "Site 3", selectedSite == 2 ? ISS_ON : ISS_OFF);
+    IUFillSwitch(&SiteS[3], "Site 4", "Site 4", selectedSite == 3 ? ISS_ON : ISS_OFF);
     IUFillSwitchVector(&SiteSP, SiteS, 4, getDeviceName(), "Sites", "", SITE_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
 
-    IUFillText(&SiteNameT[0], "Name", "", "");
-    IUFillTextVector(&SiteNameTP, SiteNameT, 1, getDeviceName(), "Site Name", "", SITE_TAB, IP_RW, 0, IPS_IDLE);
+    char siteName[64] = {"NA"};
+    IUGetConfigText(getDeviceName(), "Site Name", "Name", siteName, 64);
+    IUFillText(&SiteNameT[0], "Name", "Name", siteName);
+    IUFillTextVector(&SiteNameTP, SiteNameT, 1, getDeviceName(), "Site Name", "Site Name", SITE_TAB, IP_RW, 0, IPS_IDLE);
+
 
     if (genericCapability & LX200_HAS_FOCUS)
     {
@@ -134,6 +140,7 @@ bool LX200Telescope::initProperties()
         FocusSpeedN[0].min = 1;
         FocusSpeedN[0].max = 2;
         FocusSpeedN[0].value = 1;
+        setDriverInterface(getDriverInterface() | FOCUSER_INTERFACE);
     }
 
     TrackState = SCOPE_IDLE;
@@ -474,7 +481,6 @@ bool LX200Telescope::Park()
         }
     }
 
-    ParkSP.s   = IPS_BUSY;
     TrackState = SCOPE_PARKING;
     LOG_INFO("Parking telescope in progress...");
     return true;
@@ -825,12 +831,16 @@ bool LX200Telescope::ISNewSwitch(const char *dev, const char *name, ISState *sta
                 IDSetSwitch(&SiteSP, "Error selecting sites.");
                 return false;
             }
-
+            char siteName[64] = {0};
             if (isSimulation())
+            {
                 IUSaveText(&SiteNameTP.tp[0], "Sample Site");
+            }
             else
-                getSiteName(PortFD, SiteNameTP.tp[0].text, currentSiteNum);
-
+            {
+                getSiteName(PortFD, siteName, currentSiteNum);
+                IUSaveText(&SiteNameT[0], siteName);
+            }
             if (GetTelescopeCapability() & TELESCOPE_HAS_LOCATION)
                 sendScopeLocation();
 
@@ -1066,7 +1076,7 @@ void LX200Telescope::mountSim()
     ltv = tv;
     da  = LX200_GENERIC_SLEWRATE * dt;
 
-    /* Process per current state. We check the state of EQUATORIAL_COORDS and act acoordingly */
+    /* Process per current state. We check the state of EQUATORIAL_COORDS and act accordingly */
     switch (TrackState)
     {
 
@@ -1177,12 +1187,16 @@ void LX200Telescope::getBasicData()
 
         if (genericCapability & LX200_HAS_SITES)
         {
-            SiteNameT[0].text = new char[64];
-
-            if (getSiteName(PortFD, SiteNameT[0].text, currentSiteNum) < 0)
+            char siteName[64] = {0};
+            if (getSiteName(PortFD, siteName, currentSiteNum) < 0)
+            {
                 LOG_ERROR("Failed to get site name from device");
+            }
             else
+            {
+                IUSaveText(&SiteNameT[0], siteName);
                 IDSetText(&SiteNameTP, nullptr);
+            }
         }
 
 
@@ -1300,6 +1314,10 @@ bool LX200Telescope::sendScopeTime()
     char ctime[MAXINDINAME] = {0};
     struct tm ltm;
     struct tm utm;
+
+    memset(&ltm, 0, sizeof(ltm));
+    memset(&utm, 0, sizeof(utm));
+
     time_t time_epoch;
 
     double offset = 0;
@@ -1338,6 +1356,15 @@ bool LX200Telescope::sendScopeTime()
         return false;
     }
 
+    // Assume no daylight savings always
+    int isdst = 0;
+
+    // Try to get whether daylight saving time is toggled.
+    // By default we assume it's inactive.
+    // N.B. This only works for LX200 Autostar II so shouldn't be used in base class.
+    //getDaylightSaving(PortFD, &isdst);
+
+    ltm.tm_isdst = isdst;
     // Get local time epoch in UNIX seconds
     time_epoch = mktime(&ltm);
 
@@ -1398,9 +1425,16 @@ bool LX200Telescope::sendScopeLocation()
     {
         snprintf(lng_sexagesimal, MAXINDIFORMAT, "%02d:%02d:%02.1lf", long_dd, long_mm, long_ssf);
         f_scansexa(lng_sexagesimal, &(LocationNP.np[LOCATION_LONGITUDE].value));
+        // JM 2024.02.05: INDI Longitude MUST be 0 to +360 eastward
+        // We cannot use cartographic format in the INDI drivers!
+        if (LocationNP.np[LOCATION_LONGITUDE].value < 0)
+        {
+            LocationNP.np[LOCATION_LONGITUDE].value += 360;
+            fs_sexa(lng_sexagesimal, LocationNP.np[LOCATION_LONGITUDE].value, 2, 36000);
+        }
     }
 
-    LOGF_INFO("Mount has Latitude %s (%g) Longitude %s (%g) (Longitude sign in carthography format)",
+    LOGF_INFO("Mount has Latitude %s (%g) Longitude (0 to +360 Eastwards) %s (%g)",
               lat_sexagesimal,
               LocationN[LOCATION_LATITUDE].value,
               lng_sexagesimal,
@@ -1661,3 +1695,4 @@ bool LX200Telescope::SetFocuserSpeed(int speed)
 {
     return (setFocuserSpeedMode(PortFD, speed) == 0);
 }
+

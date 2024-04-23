@@ -30,8 +30,10 @@
 #include "defaultdevice.h"
 #include "indiguiderinterface.h"
 #include "indipropertynumber.h"
+#include "indipropertyswitch.h"
 #include "inditimer.h"
 #include "indielapsedtimer.h"
+#include "fitskeyword.h"
 #include "dsp/manager.h"
 #include "stream/streammanager.h"
 
@@ -41,15 +43,12 @@
 
 #include <fitsio.h>
 
-#include <memory>
+#include <map>
 #include <cstring>
 #include <chrono>
 #include <stdint.h>
 #include <mutex>
 #include <thread>
-
-//JM 2019-01-17: Disabled until further notice
-//#define WITH_EXPOSURE_LOOPING
 
 extern const char * IMAGE_SETTINGS_TAB;
 extern const char * IMAGE_INFO_TAB;
@@ -64,6 +63,7 @@ namespace INDI
 {
 
 class StreamManager;
+class XISFWrapper;
 
 /**
  * \class CCD
@@ -91,7 +91,7 @@ class StreamManager;
  * It requires the client to explicitly support websockets. It is not recommended to use this
  * approach unless for the most demanding and FPS sensitive tasks.
  *
- * INDI::CCD and INDI::StreamManager both upload frames asynchrounously in a worker thread.
+ * INDI::CCD and INDI::StreamManager both upload frames asynchronously in a worker thread.
  * The CCD Buffer data is protected by the ccdBufferLock mutex. When reading the camera data
  * and writing to the buffer, it must be first locked by the mutex. After the write is complete
  * release the lock. For example:
@@ -103,7 +103,7 @@ class StreamManager;
  * ExposureComplete();
  * \endcode
  *
- * Similiary, before calling Streamer->newFrame, the buffer needs to be protected in a similiar fashion using
+ * Similarly, before calling Streamer->newFrame, the buffer needs to be protected in a similar fashion using
  * the same ccdBufferLock mutex.
  *
  * \example CCD Simulator
@@ -135,6 +135,15 @@ class CCD : public DefaultDevice, GuiderInterface
 
         typedef enum { UPLOAD_CLIENT, UPLOAD_LOCAL, UPLOAD_BOTH } CCD_UPLOAD_MODE;
 
+        typedef struct CaptureFormat
+        {
+            std::string name;
+            std::string label;
+            uint8_t bitsPerPixel {8};
+            bool isDefault {false};
+            bool isLittleEndian {true};
+        } CaptureFormat;
+
         virtual bool initProperties() override;
         virtual bool updateProperties() override;
         virtual void ISGetProperties(const char * dev) override;
@@ -164,7 +173,7 @@ class CCD : public DefaultDevice, GuiderInterface
         }
 
         /**
-         * @brief SetCCDCapability Set the CCD capabilities. Al fields must be initilized.
+         * @brief SetCCDCapability Set the CCD capabilities. Al fields must be initialized.
          * @param cap pointer to CCDCapability struct.
          */
         void SetCCDCapability(uint32_t cap);
@@ -296,7 +305,7 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual bool StartExposure(float duration);
 
         /**
-         * \brief Uploads target Chip exposed buffer as FITS to the client. Dervied classes should class
+         * \brief Uploads target Chip exposed buffer as FITS to the client. Derived classes should class
          * this function when an exposure is complete.
          * @param targetChip chip that contains upload image data
          * \note This function is not implemented in CCD, it must be implemented in the child class
@@ -405,7 +414,7 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual bool UpdateGuiderFrameType(CCDChip::CCD_FRAME fType);
 
         /**
-         * \brief Setup CCD paramters for primary CCD. Child classes call this function to update
+         * \brief Setup CCD parameters for primary CCD. Child classes call this function to update
          * CCD parameters
          * \param x Frame X coordinates in pixels.
          * \param y Frame Y coordinates in pixels.
@@ -416,7 +425,7 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual void SetCCDParams(int x, int y, int bpp, float xf, float yf);
 
         /**
-         * \brief Setup CCD paramters for guide head CCD. Child classes call this function to update
+         * \brief Setup CCD parameters for guide head CCD. Child classes call this function to update
          * CCD parameters
          * \param x Frame X coordinates in pixels.
          * \param y Frame Y coordinates in pixels.
@@ -471,8 +480,14 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual bool StopStreaming();
 
         /**
-         * \brief Add FITS keywords to a fits file
-         * \param fptr pointer to a valid FITS file.
+         * @brief SetCaptureFormat Set Active Capture format.
+         * @param index Index of capture format from CaptureFormatSP property.
+         * @return True if change is successful, false otherwise.
+         */
+        virtual bool SetCaptureFormat(uint8_t index);
+
+        /**
+         * \brief Generate FITS keywords that will be added to FIST/XISF file
          * \param targetChip The target chip to extract the keywords from.
          * \note In additional to the standard FITS keywords, this function write the following
          * keywords the FITS file:
@@ -492,7 +507,7 @@ class CCD : public DefaultDevice, GuiderInterface
          * To add additional information, override this function in the child class and ensure to call
          * CCD::addFITSKeywords.
          */
-        virtual void addFITSKeywords(fitsfile * fptr, CCDChip * targetChip);
+        virtual void addFITSKeywords(CCDChip * targetChip, std::vector<FITSRecord> &fitsKeywords);
 
         /** A function to just remove GCC warnings about deprecated conversion */
         void fits_update_key_s(fitsfile * fptr, int type, std::string name, void * p, std::string explanation, int * status);
@@ -517,12 +532,36 @@ class CCD : public DefaultDevice, GuiderInterface
         virtual void GuideComplete(INDI_EQ_AXIS axis) override;
 
         /**
+         * @brief UploadComplete Signal that capture is completed and image was uploaded and/or saved successfully.
+         * @param targetChip Active exposure chip
+         * @note Child camera should override this function to receive notification on exposure upload completion.
+         */
+        virtual void UploadComplete(CCDChip *) {}
+
+        /**
          * @brief checkTemperatureTarget Checks the current temperature against target temperature and calculates
          * the next required temperature if there is a ramp. If the current temperature is within threshold of
          * target temperature, it sets the state as OK.
          */
         virtual void checkTemperatureTarget();
 
+        /**
+         * @brief processFastExposure After an exposure is complete, check if fast
+         * exposure was enabled. If it is, then immediately start the next exposure
+         * if possible and decrement the counter.
+         * @param targetChip Active fast exposure chip.
+         * @return True if next fast exposure is started, false otherwise.
+         */
+        virtual bool processFastExposure(CCDChip * targetChip);
+
+        /**
+         * @brief addCaptureFormat Add a supported camera native capture format (e.g. Mono, Bayer8..etc)
+         * @param name Name of format (e.g. FORMAT_MONO)
+         * @param label Label of format (e.g. Mono)
+         * @param isDefault If true, it would be set as the default format if there is config file does not specify one.
+         * Config file override default format.
+         */
+        virtual void addCaptureFormat(const CaptureFormat &format);
 
         // Epoch Position
         double RA, Dec;
@@ -533,8 +572,13 @@ class CCD : public DefaultDevice, GuiderInterface
         // J2000 Position
         double J2000RA;
         double J2000DE;
+        bool J2000Valid;
 
-        double primaryFocalLength, primaryAperture, guiderFocalLength, guiderAperture;
+        // exposure information
+        char exposureStartTime[MAXINDINAME];
+        double exposureDuration;
+
+        double snoopedFocalLength, snoopedAperture;
         bool InExposure;
         bool InGuideExposure;
         //bool RapidGuideEnabled;
@@ -578,6 +622,8 @@ class CCD : public DefaultDevice, GuiderInterface
         std::vector<std::string> FilterNames;
         int CurrentFilterSlot {-1};
 
+        std::vector<CaptureFormat> m_CaptureFormats;
+
         std::unique_ptr<StreamManager> Streamer;
         std::unique_ptr<DSP::Manager> DSP;
         CCDChip PrimaryCCD;
@@ -597,6 +643,14 @@ class CCD : public DefaultDevice, GuiderInterface
         INumber EqN[2];
 
         /**
+         * @brief J200EqNP Snoop property to read the equatorial J2000 coordinates of the mount.
+         * ActiveDeviceTP defines snoop devices and the driver listens to this property emitted
+         * by the mount driver if specified. It is important to generate a proper FITS header.
+         */
+        INumberVectorProperty J2000EqNP;
+        INumber J2000EqN[2];
+
+        /**
          * @brief ActiveDeviceTP defines 4 devices the camera driver can listen to (snoop) for
          * properties of interest so that it can generate a proper FITS header.
          * + **Mount**: Listens for equatorial coordinates in JNow epoch.
@@ -604,10 +658,7 @@ class CCD : public DefaultDevice, GuiderInterface
          * + **Filter Wheel**: Listens for FILTER_SLOT and FILTER_NAME properties.
          * + **SQM**: Listens for sky quality meter magnitude.
          */
-        ITextVectorProperty ActiveDeviceTP;
-
-        // JJ ed 2019-12-10
-        IText ActiveDeviceT[5] {};
+        INDI::PropertyText ActiveDeviceTP {5};
         enum
         {
             ACTIVE_TELESCOPE,
@@ -647,6 +698,18 @@ class CCD : public DefaultDevice, GuiderInterface
         ITextVectorProperty FileNameTP;
         IText FileNameT[1] {};
 
+        /// Specifies Camera NATIVE capture format (e.g. Mono, RGB, RAW8..etc).
+        INDI::PropertySwitch CaptureFormatSP {0};
+
+        /// Specifies Driver image encoding format (FITS, Native, JPG, ..etc)
+        INDI::PropertySwitch EncodeFormatSP {3};
+        enum
+        {
+            FORMAT_FITS,     /*!< Save Image as FITS format  */
+            FORMAT_NATIVE,   /*!< Save Image as the native format of the camera itself. */
+            FORMAT_XISF      /*!< Save Image as XISF format  */
+        };
+
         ISwitch UploadS[3];
         ISwitchVectorProperty UploadSP;
 
@@ -658,12 +721,12 @@ class CCD : public DefaultDevice, GuiderInterface
             UPLOAD_PREFIX
         };
 
-        ISwitch TelescopeTypeS[2];
-        ISwitchVectorProperty TelescopeTypeSP;
+        // Telescope Information
+        INDI::PropertyNumber ScopeInfoNP {2};
         enum
         {
-            TELESCOPE_PRIMARY,
-            TELESCOPE_GUIDE
+            FOCAL_LENGTH,
+            APERTURE
         };
 
         // Websocket Support
@@ -692,36 +755,33 @@ class CCD : public DefaultDevice, GuiderInterface
         INumber CCDRotationN[1];
         INumberVectorProperty CCDRotationNP;
 
-#ifdef WITH_EXPOSURE_LOOPING
-        // Exposure Looping
-        ISwitch ExposureLoopS[2];
-        ISwitchVectorProperty ExposureLoopSP;
+        // Fast Exposure Toggle
+        ISwitch FastExposureToggleS[2];
+        ISwitchVectorProperty FastExposureToggleSP;
+
+        // Fast Exposure Frame Count
+        INumber FastExposureCountN[1];
+        INumberVectorProperty FastExposureCountNP;
+        double m_UploadTime = { 0 };
+        std::chrono::system_clock::time_point FastExposureToggleStartup;
+
+        INDI::PropertyText FITSHeaderTP {3};
         enum
         {
-            EXPOSURE_LOOP_ON,
-            EXPOSURE_LOOP_OFF
-        };
-
-        // Exposure Looping Count
-        INumber ExposureLoopCountN[1];
-        INumberVectorProperty ExposureLoopCountNP;
-        double uploadTime = { 0 };
-        std::chrono::system_clock::time_point exposureLoopStartup;
-#endif
-
-        // FITS Header
-        IText FITSHeaderT[2] {};
-        ITextVectorProperty FITSHeaderTP;
-        enum
-        {
-            FITS_OBSERVER,
-            FITS_OBJECT
+            KEYWORD_NAME,
+            KEYWORD_VALUE,
+            KEYWORD_COMMENT,
         };
 
     private:
         uint32_t capability;
 
-        bool m_ValidCCDRotation;
+        bool m_ValidCCDRotation {false};
+        std::string m_ConfigCaptureFormatName;
+        int m_ConfigEncodeFormatIndex {-1};
+        int m_ConfigFastExposureIndex {INDI_DISABLED};
+
+        std::map<std::string, FITSRecord> m_CustomFITSKeywords;
 
         ///////////////////////////////////////////////////////////////////////////////
         /// Utility Functions

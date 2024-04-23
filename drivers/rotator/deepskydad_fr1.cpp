@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <sys/ioctl.h>
+#include <cmath>
 
 #define DSD_CMD 40
 #define DSD_RES 40
@@ -57,23 +58,28 @@ bool DeepSkyDadFR1::initProperties()
     addAuxControls();
 
     // Speed mode
-    IUFillSwitch(&SpeedModeS[Slow], "SLOW", "Slow", ISS_OFF);
-    IUFillSwitch(&SpeedModeS[Fast], "FAST", "Fast", ISS_OFF);
-    IUFillSwitchVector(&SpeedModeSP, SpeedModeS, 2, getDeviceName(), "Speed mode", "Speed mode", MAIN_CONTROL_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
-	
-	// Step mode
-    IUFillSwitch(&StepSizeS[One], "1", "1", ISS_OFF);
-    IUFillSwitch(&StepSizeS[Two], "2", "1/2", ISS_OFF);
-	IUFillSwitch(&StepSizeS[Four], "4", "1/4", ISS_OFF);
-    IUFillSwitch(&StepSizeS[Eight], "8", "1/8", ISS_OFF);
-    IUFillSwitchVector(&StepSizeSP, StepSizeS, 4, getDeviceName(), "Step mode", "Step mode", MAIN_CONTROL_TAB, IP_RW, ISR_1OFMANY, 0, IPS_IDLE);
-	
+    SpeedModeSP[Slow].fill("SLOW", "Slow", ISS_OFF);
+    SpeedModeSP[Fast].fill( "FAST", "Fast", ISS_OFF);
+    SpeedModeSP.fill(getDeviceName(), "Speed mode", "Speed mode", MAIN_CONTROL_TAB, IP_RW,
+                       ISR_1OFMANY, 0, IPS_IDLE);
+
+    // Step mode
+    StepSizeSP[One].fill("1", "1", ISS_OFF);
+    StepSizeSP[Two].fill("2", "1/2", ISS_OFF);
+    StepSizeSP[Four].fill( "4", "1/4", ISS_OFF);
+    StepSizeSP[Eight].fill( "8", "1/8", ISS_OFF);
+    StepSizeSP.fill(getDeviceName(), "Step mode", "Step mode", MAIN_CONTROL_TAB, IP_RW,
+                       ISR_1OFMANY, 0, IPS_IDLE);
+
     // Firmware version
-    IUFillText(&FirmwareT[0], "Version", "Version", nullptr);
-    IUFillTextVector(&FirmwareTP, FirmwareT, 1, getDeviceName(), "Firmware", "Firmware", MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
+    FirmwareTP[0].fill("Version", "Version", nullptr);
+    FirmwareTP.fill(getDeviceName(), "Firmware", "Firmware", MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
 
     serialConnection->setDefaultPort("/dev/ttyACM0");
-    serialConnection->registerHandshake([&]() { return Handshake(); });
+    serialConnection->registerHandshake([&]()
+    {
+        return Handshake();
+    });
     serialConnection->setDefaultBaudRate(Connection::Serial::B_115200);
     return true;
 }
@@ -84,15 +90,15 @@ bool DeepSkyDadFR1::updateProperties()
 
     if (isConnected())
     {
-        defineProperty(&SpeedModeSP);
-        defineProperty(&StepSizeSP);
-        defineProperty(&FirmwareTP);
+        defineProperty(SpeedModeSP);
+        defineProperty(StepSizeSP);
+        defineProperty(FirmwareTP);
     }
     else
     {
-		deleteProperty(SpeedModeSP.name);
-        deleteProperty(StepSizeSP.name);
-        deleteProperty(FirmwareTP.name);
+        deleteProperty(SpeedModeSP);
+        deleteProperty(StepSizeSP);
+        deleteProperty(FirmwareTP);
     }
 
     return true;
@@ -111,20 +117,20 @@ bool DeepSkyDadFR1::Handshake()
 
 bool DeepSkyDadFR1::ISNewSwitch(const char * dev, const char * name, ISState * states, char * names[], int n)
 {
-   if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
+    if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
-        if (strcmp(SpeedModeSP.name, name) == 0)
+        if (SpeedModeSP.isNameMatch(name))
         {
-            int current_mode = IUFindOnSwitchIndex(&SpeedModeSP);
+            int current_mode = SpeedModeSP.findOnSwitchIndex();
 
-            IUUpdateSwitch(&SpeedModeSP, states, names, n);
+            SpeedModeSP.update(states, names, n);
 
-            int target_mode = IUFindOnSwitchIndex(&SpeedModeSP);
+            int target_mode = SpeedModeSP.findOnSwitchIndex();
 
             if (current_mode == target_mode)
             {
-                SpeedModeSP.s = IPS_OK;
-                IDSetSwitch(&SpeedModeSP, nullptr);
+                SpeedModeSP.setState(IPS_OK);
+                SpeedModeSP.apply();
                 return true;
             }
 
@@ -135,28 +141,29 @@ bool DeepSkyDadFR1::ISNewSwitch(const char * dev, const char * name, ISState * s
             bool rc = sendCommand(cmd, response);
             if (!rc)
             {
-                IUResetSwitch(&SpeedModeSP);
-                SpeedModeS[current_mode].s = ISS_ON;
-                SpeedModeSP.s              = IPS_ALERT;
-                IDSetSwitch(&SpeedModeSP, nullptr);
+                SpeedModeSP.reset();
+                SpeedModeSP[current_mode].setState(ISS_ON);
+                SpeedModeSP.setState(IPS_ALERT);
+                SpeedModeSP.apply();
                 return false;
             }
 
-            SpeedModeSP.s = IPS_OK;
-            IDSetSwitch(&SpeedModeSP, nullptr);
+            SpeedModeSP.setState(IPS_OK);
+            SpeedModeSP.apply();
             return true;
-        } else  if (strcmp(StepSizeSP.name, name) == 0)
+        }
+        else  if (StepSizeSP.isNameMatch(name))
         {
-            int current_mode = IUFindOnSwitchIndex(&StepSizeSP);
+            int current_mode = StepSizeSP.findOnSwitchIndex();
 
-            IUUpdateSwitch(&StepSizeSP, states, names, n);
+            StepSizeSP.update(states, names, n);
 
-            int target_mode = IUFindOnSwitchIndex(&StepSizeSP);
+            int target_mode = StepSizeSP.findOnSwitchIndex();
 
             if (current_mode == target_mode)
             {
-                StepSizeSP.s = IPS_OK;
-                IDSetSwitch(&StepSizeSP, nullptr);
+                StepSizeSP.setState(IPS_OK);
+                StepSizeSP.apply();
                 return true;
             }
 
@@ -167,15 +174,15 @@ bool DeepSkyDadFR1::ISNewSwitch(const char * dev, const char * name, ISState * s
             bool rc = sendCommand(cmd, response);
             if (!rc)
             {
-                IUResetSwitch(&StepSizeSP);
-                StepSizeS[current_mode].s = ISS_ON;
-                StepSizeSP.s              = IPS_ALERT;
-                IDSetSwitch(&StepSizeSP, nullptr);
+                StepSizeSP.reset();
+                StepSizeSP[current_mode].setState(ISS_ON);
+                StepSizeSP.setState(IPS_ALERT);
+                StepSizeSP.apply();
                 return false;
             }
 
-            StepSizeSP.s = IPS_OK;
-            IDSetSwitch(&StepSizeSP, nullptr);
+            StepSizeSP.setState(IPS_OK);
+            StepSizeSP.apply();
             return true;
         }
     }
@@ -186,8 +193,8 @@ bool DeepSkyDadFR1::ISNewSwitch(const char * dev, const char * name, ISState * s
 IPState DeepSkyDadFR1::MoveRotator(double angle)
 {
     char response[DSD_RES];
-	char cmd[DSD_CMD];
-    int angleInt = (int)(angle*100);
+    char cmd[DSD_CMD];
+    int angleInt = (int)(angle * 100);
     snprintf(cmd, DSD_CMD, "[STRG%d]", angleInt);
     if (!sendCommand(cmd, response) || !sendCommand("[SMOV]", response))
         return IPS_ALERT;
@@ -217,7 +224,7 @@ bool DeepSkyDadFR1::AbortRotator()
 bool DeepSkyDadFR1::ReverseRotator(bool enabled)
 {
     char response[DSD_RES];
-	char cmd[DSD_CMD];
+    char cmd[DSD_CMD];
     snprintf(cmd, DSD_CMD, "[SREV%d]", enabled ? 1 : 0);
     if (!sendCommand(cmd, response))
         return false;
@@ -233,8 +240,8 @@ bool DeepSkyDadFR1::ReverseRotator(bool enabled)
 bool DeepSkyDadFR1::SyncRotator(double angle)
 {
     char response[DSD_RES];
-	char cmd[DSD_CMD];
-    int angleInt = (int)(angle*100);
+    char cmd[DSD_CMD];
+    int angleInt = (int)(angle * 100);
     snprintf(cmd, DSD_CMD, "[SPOS%d]", angleInt);
     if (!sendCommand(cmd, response))
         return false;
@@ -259,29 +266,29 @@ bool DeepSkyDadFR1::getStatusData()
 {
     char response[DSD_RES];
 
-	int motorStatus;
+    int motorStatus;
     int motorPosition;
-	
-	if (!sendCommand("[GMOV]", response))
-		return false;
-	else
-		sscanf(response, "(%d)", &motorStatus);
-	
-	if (!sendCommand("[GPOS]", response))
-		return false;
-	else
-		sscanf(response, "(%d)", &motorPosition);
-	
+
+    if (!sendCommand("[GMOV]", response))
+        return false;
+    else
+        sscanf(response, "(%d)", &motorStatus);
+
+    if (!sendCommand("[GPOS]", response))
+        return false;
+    else
+        sscanf(response, "(%d)", &motorPosition);
+
 
 
     const IPState motionState = motorStatus == 1 ? IPS_BUSY : IPS_OK;
 
-    double motorPositionDouble = (double)motorPosition/(double)100;
+    double motorPositionDouble = (double)motorPosition / (double)100;
     if (std::abs(motorPositionDouble - GotoRotatorN[0].value) > 0.01 || GotoRotatorNP.s != motionState)
-	{
+    {
         GotoRotatorN[0].value = motorPositionDouble;
-		GotoRotatorNP.s = motionState;
-		IDSetNumber(&GotoRotatorNP, nullptr);
+        GotoRotatorNP.s = motionState;
+        IDSetNumber(&GotoRotatorNP, nullptr);
     }
 
     return true;
@@ -295,8 +302,8 @@ bool DeepSkyDadFR1::getInitialStatusData()
 
     char versionString[6] = { 0 };
     snprintf(versionString, 6, "%s", response + 31);
-    IUSaveText(&FirmwareT[0], response);
-    IDSetText(&FirmwareTP, nullptr);
+    FirmwareTP[0].setText(response);
+    FirmwareTP.apply();
 
     int motorReversed;
 
@@ -317,21 +324,21 @@ bool DeepSkyDadFR1::getInitialStatusData()
         return false;
 
     if(strcmp(response, "(2)") == 0)
-        SpeedModeS[Slow].s = ISS_ON;
+        SpeedModeSP[Slow].setState(ISS_ON);
     else if(strcmp(response, "(3)") == 0)
-        SpeedModeS[Fast].s = ISS_ON;
+        SpeedModeSP[Fast].setState(ISS_ON);
 
     if (!sendCommand("[GSTP]", response))
         return false;
 
     if(strcmp(response, "(1)") == 0)
-        StepSizeS[One].s = ISS_ON;
+        StepSizeSP[One].setState(ISS_ON);
     else if(strcmp(response, "(2)") == 0)
-        StepSizeS[Two].s = ISS_ON;
+        StepSizeSP[Two].setState(ISS_ON);
     else if(strcmp(response, "(4)") == 0)
-        StepSizeS[Four].s = ISS_ON;
+        StepSizeSP[Four].setState(ISS_ON);
     else if(strcmp(response, "(8)") == 0)
-        StepSizeS[Eight].s = ISS_ON;
+        StepSizeSP[Eight].setState(ISS_ON);
 
     return true;
 }

@@ -21,9 +21,14 @@
 #pragma once
 
 #include "indibase.h"
+#include "indipropertynumber.h"
+#include "indipropertyswitch.h"
+#include "indipropertylight.h"
+#include "inditimer.h"
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 
 // Alias
 using WI = INDI::WeatherInterface;
@@ -38,14 +43,13 @@ namespace INDI
    The weather functionality can be an independent device (e.g. weather station), or weather-related reports within another device.
 
    When developing a driver for a fully independent weather device, use INDI::Weather directly. To add focus functionality to
-   an existing driver, subclass INDI::WeatherInterface. In your driver, then call the necessary focuser interface functions.
+   an existing driver, subclass INDI::WeatherInterface. In your driver, then call the necessary weather interface functions.
 
    <table>
    <tr><th>Function</th><th>Where to call it from your driver</th></tr>
    <tr><td>WI::initProperties</td><td>initProperties()</td></tr>
    <tr><td>WI::updateProperties</td><td>updateProperties()</td></tr>
    <tr><td>WI::processNumber</td><td>ISNewNumber(...) Check if the property name contains WEATHER_* and then call WI::processNumber(..) for such properties</td></tr>
-   <tr><td>WI::processSwitch</td><td>ISNewSwitch(...)</td></tr>
    </table>
 
    Implement and overwrite the rest of the virtual functions as needed. INDI Pegasus Ultimate Power Box driver is a good example to check for an actual implementation
@@ -61,7 +65,7 @@ class WeatherInterface
         virtual ~WeatherInterface();
 
         /**
-         * \brief Initilize focuser properties. It is recommended to call this function within
+         * \brief Initialize focuser properties. It is recommended to call this function within
          * initProperties() of your primary device
          * \param statusGroup group for status properties
          * \param paramsGroup group for parameter properties
@@ -74,8 +78,16 @@ class WeatherInterface
          */
         bool updateProperties();
 
-        /** \brief Process focus number properties */
+        /** \brief Process weather number properties */
         bool processNumber(const char *dev, const char *name, double values[], char *names[], int n);
+
+        /** \brief Process weather switch properties */
+        bool processSwitch(const char *dev, const char *name, ISState *states, char *names[], int n);
+
+        /**
+         * @brief checkWeatherUpdate Calls updateWeather and update critical parameters accordingly.
+         */
+        void checkWeatherUpdate();
 
         /**
          * @brief updateWeather Update weather conditions from device or service. The function should
@@ -104,7 +116,7 @@ class WeatherInterface
          * <li>Alert: Any value outsize of Ok and Warning zone is marked as Alert.</li>
          * </ol>
          * @param name Name of parameter
-         * @param label Label of paremeter (in GUI)
+         * @param label Label of parameter (in GUI)
          * @param numMinOk minimum Ok range value.
          * @param numMaxOk maximum Ok range value.
          * @param percWarning percentage for Warning.
@@ -115,10 +127,10 @@ class WeatherInterface
          * @brief setCriticalParameter Set parameter that is considered critical to the operation of the
          * observatory. The parameter state can affect the overall weather driver state which signals
          * the client to take appropriate action depending on the severity of the state.
-         * @param param Name of critical parameter.
+         * @param name Name of critical parameter.
          * @return True if critical parameter was set, false if parameter is not found.
          */
-        bool setCriticalParameter(std::string param);
+        bool setCriticalParameter(std::string name);
 
         /**
          * @brief setParameterValue Update weather parameter value
@@ -137,8 +149,6 @@ class WeatherInterface
          */
         IPState checkParameterState(const std::string &param) const;
 
-        IPState checkParameterState(const INumber &parameter) const;
-
         /**
          * @brief updateWeatherState Send update weather state to client
          * @returns true if any parameters changed from last update. False if no states changed.
@@ -146,20 +156,33 @@ class WeatherInterface
         bool syncCriticalParameters();
 
         // Parameters
-        INumber *ParametersN {nullptr};
-        INumberVectorProperty ParametersNP;
+        INDI::PropertyNumber ParametersNP {0};
 
         // Parameter Ranges
-        INumberVectorProperty *ParametersRangeNP {nullptr};
-        uint8_t nRanges {0};
+        std::vector<INDI::PropertyNumber> ParametersRangeNP;
+        enum
+        {
+            MIN_OK,
+            MAX_OK,
+            PERCENT_WARNING,
+        };
 
         // Weather status
-        ILight *critialParametersL {nullptr};
-        ILightVectorProperty critialParametersLP;
+        INDI::PropertyLight critialParametersLP {0};
+
+        // Update Period
+        INDI::PropertyNumber UpdatePeriodNP {1};
+        // Refresh data
+        INDI::PropertySwitch RefreshSP {1};
+
+        // Override
+        INDI::PropertySwitch OverrideSP {1};
+
 
     private:
-        void createParameterRange(std::string name, std::string label);
+        void createParameterRange(std::string name, std::string label, double numMinOk, double numMaxOk, double percWarning);
         DefaultDevice *m_defaultDevice { nullptr };
         std::string m_ParametersGroup;
+        INDI::Timer m_UpdateTimer;
 };
 }

@@ -119,7 +119,7 @@ bool FocuserDriver::updateProperties()
 
 bool FocuserDriver::Handshake()
 {
-    // This functin is ensure that we have communication with the focuser
+    // This function is ensure that we have communication with the focuser
     // Below we send it 0x6 byte and check for 'S' in the return. Change this
     // to be valid for your driver. It could be anything, you can simply put this below
     // return readPosition()
@@ -207,7 +207,7 @@ void FocuserDriver::hexDump(char * buf, const char * data, int size)
 bool FocuserDriver::ISNewSwitch(const char * dev, const char * name, ISState * states, char * names[], int n)
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
-    {        
+    {
         // Stepping Mode
         if (!strcmp(name, SteppingModeSP.name))
         {

@@ -43,7 +43,7 @@ void LightBoxInterface::initLightBoxProperties(const char *deviceName, const cha
 {
     // Turn on/off light
     IUFillSwitch(&LightS[FLAT_LIGHT_ON], "FLAT_LIGHT_ON", "On", ISS_OFF);
-    IUFillSwitch(&LightS[FLAT_LIGHT_OFF], "FLAT_LIGHT_OFF", "Off", ISS_OFF);
+    IUFillSwitch(&LightS[FLAT_LIGHT_OFF], "FLAT_LIGHT_OFF", "Off", ISS_ON);
     IUFillSwitchVector(&LightSP, LightS, 2, deviceName, "FLAT_LIGHT_CONTROL", "Flat Light", groupName, IP_RW,
                        ISR_1OFMANY, 0, IPS_IDLE);
 
@@ -295,9 +295,17 @@ bool LightBoxInterface::snoopLightBox(XMLEle *root)
         {
             if (currentFilterSlot < FilterIntensityNP.nnp)
             {
-                double duration = FilterIntensityN[currentFilterSlot].value;
-                if (duration > 0)
-                    SetLightBoxBrightness(duration);
+                auto value = FilterIntensityN[currentFilterSlot].value;
+                if (value > 0)
+                {
+                    if (SetLightBoxBrightness(value))
+                    {
+                        LightIntensityN[0].value = value;
+                        LightIntensityNP.s = IPS_OK;
+                        IDSetNumber(&LightIntensityNP, nullptr);
+                    }
+
+                }
             }
         }
     }

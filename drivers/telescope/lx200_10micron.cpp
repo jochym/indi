@@ -3,7 +3,7 @@
     GM1000HPS GM2000QCI GM2000HPS GM3000HPS GM4000QCI GM4000HPS AZ2000
     Mount Command Protocol 2.14.11
 
-    Copyright (C) 2017-2020 Hans Lambermont
+    Copyright (C) 2017-2023 Hans Lambermont
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -35,7 +35,7 @@
 #include <strings.h>
 #include <termios.h>
 #include <math.h>
-#include <libnova.h>
+#include <libnova/libnova.h>
 
 #define PRODUCT_TAB   "Product"
 #define ALIGNMENT_TAB "Alignment"
@@ -74,17 +74,18 @@ LX200_10MICRON::LX200_10MICRON() : LX200Generic()
         TELESCOPE_HAS_TRACK_MODE |
         TELESCOPE_CAN_CONTROL_TRACK |
         TELESCOPE_HAS_TRACK_RATE |
-        TELESCOPE_CAN_TRACK_SATELLITE
+        TELESCOPE_CAN_TRACK_SATELLITE,
+        4
     );
 
-    setVersion(1, 0);
+    setVersion(1, 2); // don't forget to update drivers.xml
 }
 
 // Called by INDI::DefaultDevice::ISGetProperties
 // Note that getDriverName calls ::getDefaultName which returns LX200 Generic
 const char *LX200_10MICRON::getDefaultName()
 {
-    return (const char *)"10micron";
+    return "10micron";
 }
 
 // Called by INDI::Telescope::callHandshake, either TCP Connect or Serial Port Connect
@@ -288,7 +289,7 @@ void LX200_10MICRON::getBasicData()
         getCommandString(PortFD, RefractionModelTemperature, "#:GRTMP#");
         float rmtemp;
         sscanf(RefractionModelTemperature, "%f#", &rmtemp);
-        RefractionModelTemperatureN[0].value = (double) rmtemp;
+        RefractionModelTemperatureN[0].value = rmtemp;
         LOGF_INFO("RefractionModelTemperature is %0+6.1f degrees C", RefractionModelTemperatureN[0].value);
         IDSetNumber(&RefractionModelTemperatureNP, nullptr);
 
@@ -296,20 +297,20 @@ void LX200_10MICRON::getBasicData()
         getCommandString(PortFD, RefractionModelPressure, "#:GRPRS#");
         float rmpres;
         sscanf(RefractionModelPressure, "%f#", &rmpres);
-        RefractionModelPressureN[0].value = (double) rmpres;
+        RefractionModelPressureN[0].value = rmpres;
         LOGF_INFO("RefractionModelPressure is %06.1f hPa", RefractionModelPressureN[0].value);
         IDSetNumber(&RefractionModelPressureNP, nullptr);
 
         int ModelCount;
         getCommandInt(PortFD, &ModelCount, "#:modelcnt#");
         ModelCountN[0].value = (double) ModelCount;
-        LOGF_INFO("%d Alignment Models", (int) ModelCountN[0].value);
+        LOGF_INFO("%d Alignment Models", static_cast<int>(ModelCountN[0].value));
         IDSetNumber(&ModelCountNP, nullptr);
 
         int AlignmentPoints;
         getCommandInt(PortFD, &AlignmentPoints, "#:getalst#");
-        AlignmentPointsN[0].value = (double) AlignmentPoints;
-        LOGF_INFO("%d Alignment Stars in active model", (int) AlignmentPointsN[0].value);
+        AlignmentPointsN[0].value = AlignmentPoints;
+        LOGF_INFO("%d Alignment Stars in active model", static_cast<int>(AlignmentPointsN[0].value));
         IDSetNumber(&AlignmentPointsNP, nullptr);
 
         if (false == getUnattendedFlipSetting())
@@ -539,8 +540,14 @@ bool LX200_10MICRON::Park()
     LOG_INFO("Parking.");
     if (setStandardProcedureWithoutRead(fd, "#:KA#") < 0)
     {
+        ParkSP.s = IPS_ALERT;
+        IDSetSwitch(&ParkSP, "Park command failed.");
         return false;
     }
+
+    ParkSP.s   = IPS_BUSY;
+    TrackState = SCOPE_PARKING;
+    IDSetSwitch(&ParkSP, nullptr);
     // postpone SetParked(true) for ReadScopeStatus so that we know it is actually correct
     return true;
 }
@@ -553,9 +560,44 @@ bool LX200_10MICRON::UnPark()
     LOG_INFO("Unparking.");
     if (setStandardProcedureWithoutRead(fd, "#:PO#") < 0)
     {
+        ParkSP.s = IPS_ALERT;
+        IDSetSwitch(&ParkSP, "Unpark command failed.");
         return false;
     }
+
+    ParkSP.s   = IPS_OK;
+    TrackState = SCOPE_IDLE;
     SetParked(false);
+    IDSetSwitch(&ParkSP, nullptr);
+    return true;
+}
+
+bool LX200_10MICRON::SetTrackEnabled(bool enabled)
+{
+    // :AL#
+    // Stops tracking.
+    // Returns: nothing
+    // :AP#
+    // Starts tracking.
+    // Returns: nothing
+    if (enabled)
+    {
+        LOG_INFO("Start tracking.");
+        if (setStandardProcedureWithoutRead(fd, "#:AP#") < 0)
+        {
+            LOG_ERROR("Start tracking command failed");
+            return false;
+        }
+    }
+    else
+    {
+        LOG_INFO("Stop tracking.");
+        if (setStandardProcedureWithoutRead(fd, "#:AL#") < 0)
+        {
+            LOG_ERROR("Stop tracking command failed");
+            return false;
+        }
+    }
     return true;
 }
 
@@ -620,7 +662,7 @@ bool LX200_10MICRON::flip()
     DEBUGFDEVICE(getDefaultName(), DBG_SCOPE, "<%s>", __FUNCTION__);
     char data[64];
     snprintf(data, sizeof(data), "#:FLIP#");
-    return 0 == setStandardProcedureAndExpect(fd, data, "1");
+    return 0 == setStandardProcedureAndExpectChar(fd, data, "1");
 }
 
 bool LX200_10MICRON::SyncConfigBehaviour(bool cmcfg)
@@ -628,7 +670,7 @@ bool LX200_10MICRON::SyncConfigBehaviour(bool cmcfg)
     // #:CMCFGn#
     // Configures the behaviour of the :CM# and :CMR# commands depending on the value
     // of n. If n=0, :the commands :CM# and :CMR# work in the default mode, i.e. they
-    // synchronize the position ot the mount with the coordinates of the currently selected
+    // synchronize the position to the mount with the coordinates of the currently selected
     // target by correcting the axis offset values. If n=1, the commands :CM# and :CMR#
     // work by using the synchronization position as an additional alignment star for refining
     // the alignment model.
@@ -655,7 +697,7 @@ bool LX200_10MICRON::setLocalDate(uint8_t days, uint8_t months, uint16_t years)
     DEBUGFDEVICE(getDefaultName(), DBG_SCOPE, "<%s>", __FUNCTION__);
     char data[64];
     snprintf(data, sizeof(data), ":SC%04d-%02d-%02d#", years, months, days);
-    return 0 == setStandardProcedureAndExpect(fd, data, "1");
+    return 0 == setStandardProcedureAndExpectChar(fd, data, "1");
 }
 
 bool LX200_10MICRON::SetTLEtoFollow(const char *tle)
@@ -711,10 +753,10 @@ bool LX200_10MICRON::SetTLEtoFollow(const char *tle)
         {
             LOG_ERROR("Invalid formatting of TLE, trying to split:");
             char *pch = strtok ((char*) tle, "\n");
-            while (pch != NULL)
+            while (pch != nullptr)
             {
                 LOGF_INFO("%s\n", pch);
-                pch = strtok (NULL, "\n");
+                pch = strtok (nullptr, "\n");
             }
             return 1;
         }
@@ -722,10 +764,10 @@ bool LX200_10MICRON::SetTLEtoFollow(const char *tle)
     else
     {
         char *pch = strtok ((char*) tle, "\n");
-        while (pch != NULL)
+        while (pch != nullptr)
         {
             LOGF_INFO("%s\n", pch);
-            pch = strtok (NULL, "\n");
+            pch = strtok (nullptr, "\n");
         }
     }
     return 0;
@@ -766,7 +808,7 @@ bool LX200_10MICRON::SetTLEfromDatabase(int tleN)
 bool LX200_10MICRON::CalculateSatTrajectory(std::string start_pass_isodatetime, std::string end_pass_isodatetime)
 {
     // #:TLEPJD,min#
-    // Precalulates the first transit of the satellite with the currently loaded orbital elements,
+    // Precalculates the first transit of the satellite with the currently loaded orbital elements,
     // starting from Julian Date JD and for a period of min minutes, where min is from 1 to 1440.
     // Two-line elements have to be loaded with the :TLEL command.
     // Returns:
@@ -794,7 +836,7 @@ bool LX200_10MICRON::CalculateSatTrajectory(std::string start_pass_isodatetime, 
     double JD_end;
     JD_start = ln_get_julian_day(&start_pass);
     JD_end = ln_get_julian_day(&end_pass);
-    int nextPassInMinutes = (int) ceil((JD_end - JD_start) * 24 * 60);
+    int nextPassInMinutes = static_cast<int>(ceil((JD_end - JD_start) * 24 * 60));
     int nextPassinMinutesUpTo1440 = std::min(nextPassInMinutes,  1440);
     int nextPassinMinutesBetween1and1440 = std::max(nextPassinMinutesUpTo1440, 1);
 
@@ -928,7 +970,7 @@ int LX200_10MICRON::AddSyncPoint(double MRa, double MDec, double MSide, double P
     fs_sexa(MDec_str, MDec, 0, 3600);
 
     char MSide_char;
-    ((int)MSide == 0) ? MSide_char = 'E' : MSide_char = 'W';
+    (static_cast<int>(MSide) == 0) ? MSide_char = 'E' : MSide_char = 'W';
 
     char PRa_str[32], PDec_str[32];
     fs_sexa(PRa_str, PRa, 0, 36000);
@@ -1113,7 +1155,7 @@ bool LX200_10MICRON::ISNewSwitch(const char *dev, const char *name, ISState *sta
                     // Returns:
                     // the string "V#" (this is always successful).
                     // Available from version 2.8.15.
-                    if (0 != setStandardProcedureAndExpect(fd, "#:newalig#", "V"))
+                    if (0 != setStandardProcedureAndExpectChar(fd, "#:newalig#", "V"))
                     {
                         LOG_ERROR("New alignment start error");
                         AlignmentStateSP.s = IPS_ALERT;
@@ -1133,7 +1175,7 @@ bool LX200_10MICRON::ISNewSwitch(const char *dev, const char *name, ISState *sta
                     // the string "E#" if the alignment couldn't be computed successfully with the current
                     // alignment specification. In this case the previous alignment is retained.
                     // Available from version 2.8.15.
-                    if (0 != setStandardProcedureAndExpect(fd, "#:endalig#", "V"))
+                    if (0 != setStandardProcedureAndExpectChar(fd, "#:endalig#", "V"))
                     {
                         LOG_ERROR("New alignment end error");
                         AlignmentStateSP.s = IPS_ALERT;
@@ -1149,7 +1191,7 @@ bool LX200_10MICRON::ISNewSwitch(const char *dev, const char *name, ISState *sta
                     // Deletes the current alignment model and stars.
                     // Returns: an empty string terminated by '#'.
                     // Available from version 2.8.15.
-                    if (0 != setStandardProcedureAndExpect(fd, "#:delalig#", "#"))
+                    if (0 != setStandardProcedureAndExpectChar(fd, "#:delalig#", "#"))
                     {
                         LOG_ERROR("Delete current alignment error");
                         AlignmentStateSP.s = IPS_ALERT;
@@ -1284,8 +1326,6 @@ bool LX200_10MICRON::ISNewText(const char *dev, const char *name, char *texts[],
                 LOG_ERROR("TLE was not correctly uploaded");
                 return false;
             }
-
-            return true;
         }
         if (strcmp(name, "SAT_PASS_WINDOW") == 0)
         {
@@ -1304,8 +1344,6 @@ bool LX200_10MICRON::ISNewText(const char *dev, const char *name, char *texts[],
                 LOG_ERROR("Trajectory could not be calculated");
                 return false;
             }
-
-            return true;
         }
     }
     return LX200Generic::ISNewText(dev, name, texts, names, n);
@@ -1339,32 +1377,37 @@ int LX200_10MICRON::setStandardProcedureWithoutRead(int fd, const char *data)
     int nbytes_write = 0;
 
     DEBUGFDEVICE(getDefaultName(), DBG_SCOPE, "CMD <%s>", data);
+    tcflush(fd, TCIFLUSH);
     if ((error_type = tty_write_string(fd, data, &nbytes_write)) != TTY_OK)
     {
+        LOGF_ERROR("CMD <%s> write ERROR %d", data, error_type);
         return error_type;
     }
     tcflush(fd, TCIFLUSH);
     return 0;
 }
-int LX200_10MICRON::setStandardProcedureAndExpect(int fd, const char *data, const char *expect)
+
+int LX200_10MICRON::setStandardProcedureAndExpectChar(int fd, const char *data, const char *expect)
 {
     char bool_return[2];
     int error_type;
     int nbytes_write = 0, nbytes_read = 0;
 
     DEBUGFDEVICE(getDefaultName(), DBG_SCOPE, "CMD <%s>", data);
-
     tcflush(fd, TCIFLUSH);
-
     if ((error_type = tty_write_string(fd, data, &nbytes_write)) != TTY_OK)
+    {
+        LOGF_ERROR("CMD <%s> write ERROR %d", data, error_type);
         return error_type;
-
+    }
     error_type = tty_read(fd, bool_return, 1, LX200_TIMEOUT, &nbytes_read);
-
     tcflush(fd, TCIFLUSH);
 
     if (nbytes_read < 1)
+    {
+        LOGF_ERROR("CMD <%s> read ERROR %d", data, error_type);
         return error_type;
+    }
 
     if (bool_return[0] != expect[0])
     {
@@ -1383,18 +1426,20 @@ int LX200_10MICRON::setStandardProcedureAndReturnResponse(int fd, const char *da
     int nbytes_write = 0, nbytes_read = 0;
 
     DEBUGFDEVICE(getDefaultName(), DBG_SCOPE, "CMD <%s>", data);
-
     tcflush(fd, TCIFLUSH);
-
     if ((error_type = tty_write_string(fd, data, &nbytes_write)) != TTY_OK)
+    {
+        LOGF_ERROR("CMD <%s> write ERROR %d", data, error_type);
         return error_type;
-
+    }
     error_type = tty_read(fd, response, max_response_length, LX200_TIMEOUT, &nbytes_read);
-
     tcflush(fd, TCIFLUSH);
 
     if (nbytes_read < 1)
+    {
+        LOGF_ERROR("CMD <%s> read ERROR %d", data, error_type);
         return error_type;
+    }
 
     return 0;
 }

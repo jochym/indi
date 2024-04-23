@@ -59,7 +59,8 @@ bool Receiver::initProperties()
     IUFillNumber(&ReceiverSettingsN[RECEIVER_BITSPERSAMPLE], "RECEIVER_BITSPERSAMPLE", "Bits per sample", "%16.2f", 1, 4, 1, 1);
     IUFillNumber(&ReceiverSettingsN[RECEIVER_SAMPLERATE], "RECEIVER_SAMPLERATE", "Sampling rate", "%16.2f", 1, 4, 1, 1);
     IUFillNumber(&ReceiverSettingsN[RECEIVER_ANTENNA], "RECEIVER_ANTENNA", "Antenna", "%16.2f", 1, 4, 1, 1);
-    IUFillNumberVector(&ReceiverSettingsNP, ReceiverSettingsN, 6, getDeviceName(), "RECEIVER_SETTINGS", "Receiver Settings", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
+    IUFillNumberVector(&ReceiverSettingsNP, ReceiverSettingsN, 6, getDeviceName(), "RECEIVER_SETTINGS", "Receiver Settings",
+                       MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
     setDriverInterface(SPECTROGRAPH_INTERFACE);
 
@@ -102,10 +103,8 @@ bool Receiver::ISNewText(const char *dev, const char *name, char *values[], char
 
 bool Receiver::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n)
 {
-    if (dev && !strcmp(dev, getDeviceName()) && !strcmp(name, ReceiverSettingsNP.name)) {
-        IDSetNumber(&ReceiverSettingsNP, nullptr);
-    }
-    if (dev && !strcmp(dev, getDeviceName()) && !strcmp(name, ReceiverSettingsNP.name)) {
+    if (dev && !strcmp(dev, getDeviceName()) && !strcmp(name, ReceiverSettingsNP.name))
+    {
         IDSetNumber(&ReceiverSettingsNP, nullptr);
     }
     return processNumber(dev, name, values, names, n);
@@ -117,7 +116,7 @@ bool Receiver::ISNewSwitch(const char *dev, const char *name, ISState *values, c
 }
 
 bool Receiver::ISNewBLOB(const char *dev, const char *name, int sizes[], int blobsizes[], char *blobs[],
-           char *formats[], char *names[], int n)
+                         char *formats[], char *names[], int n)
 {
     return processBLOB(dev, name, sizes, blobsizes, blobs, formats, names, n);
 }
@@ -156,6 +155,17 @@ void Receiver::setFrequency(double freq)
     ReceiverSettingsN[Receiver::RECEIVER_FREQUENCY].value = freq;
 
     IDSetNumber(&ReceiverSettingsNP, nullptr);
+
+}
+
+void Receiver::setBPS(int BPS)
+{
+    BitsPerSample = BPS;
+
+    ReceiverSettingsN[Receiver::RECEIVER_BITSPERSAMPLE].value = BitsPerSample;
+
+    IDSetNumber(&ReceiverSettingsNP, nullptr);
+    SensorInterface::setBPS(BPS);
 }
 
 void Receiver::SetReceiverCapability(uint32_t cap)
@@ -172,25 +182,26 @@ bool Receiver::StartIntegration(double duration)
 }
 
 void Receiver::setMinMaxStep(const char *property, const char *element, double min, double max, double step,
-                                   bool sendToClient)
+                             bool sendToClient)
 {
-    INumberVectorProperty *vp = nullptr;
-
-    if (!strcmp(property, ReceiverSettingsNP.name)) {
-        vp = &FramedIntegrationNP;
-
-        INumber *np = IUFindNumber(vp, element);
-        if (np)
-        {
-            np->min  = min;
-            np->max  = max;
-            np->step = step;
-
-            if (sendToClient)
-                IUUpdateMinMax(vp);
-        }
-    }
     INDI::SensorInterface::setMinMaxStep(property, element, min, max, step, sendToClient);
+    INumberVectorProperty *nvp = nullptr;
+
+    if (!strcmp(property, ReceiverSettingsNP.name))
+        nvp = &ReceiverSettingsNP;
+    else
+        return;
+
+    INumber *np = IUFindNumber(nvp, element);
+    if (np)
+    {
+        np->min  = min;
+        np->max  = max;
+        np->step = step;
+
+        if (sendToClient)
+            IUUpdateMinMax(nvp);
+    }
 }
 
 void Receiver::addFITSKeywords(fitsfile *fptr, uint8_t* buf, int len)

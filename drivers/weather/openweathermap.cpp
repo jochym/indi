@@ -26,13 +26,20 @@
 
 #include "openweathermap.h"
 
-#include "gason.h"
+#ifdef _USE_SYSTEM_JSONLIB
+#include <nlohmann/json.hpp>
+#else
+#include <indijson.hpp>
+#endif
+
 #include "locale_compat.h"
 
 #include <curl/curl.h>
 
 #include <memory>
 #include <cstring>
+
+using json = nlohmann::json;
 
 // We declare an auto pointer to OpenWeatherMap.
 std::unique_ptr<OpenWeatherMap> openWeatherMap(new OpenWeatherMap());
@@ -45,24 +52,34 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb, void *use
 
 OpenWeatherMap::OpenWeatherMap()
 {
-    setVersion(1, 0);
+    setVersion(1, 2);
 
-    owmLat  = -1000;
-    owmLong = -1000;
+    owmLat  = std::numeric_limits<double>::quiet_NaN();
+    owmLong = std::numeric_limits<double>::quiet_NaN();
 
     setWeatherConnection(CONNECTION_NONE);
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
-OpenWeatherMap::~OpenWeatherMap() {}
+OpenWeatherMap::~OpenWeatherMap()
+{
+    curl_global_cleanup();
+}
 
 const char *OpenWeatherMap::getDefaultName()
 {
-    return (const char *)"OpenWeatherMap";
+    return "OpenWeatherMap";
+}
+
+void OpenWeatherMap::ISGetProperties(const char *dev)
+{
+    INDI::Weather::ISGetProperties(dev);
+    defineProperty(owmAPIKeyTP);
 }
 
 bool OpenWeatherMap::Connect()
 {
-    if (owmAPIKeyT[0].text == nullptr)
+    if (owmAPIKeyTP[0].getText() == nullptr)
     {
         LOG_ERROR("OpenWeatherMap API Key is not available. Please register your API key at "
                   "www.openweathermap.org and save it under Options.");
@@ -81,18 +98,18 @@ bool OpenWeatherMap::initProperties()
 {
     INDI::Weather::initProperties();
 
-    IUFillText(&owmAPIKeyT[0], "API_KEY", "API Key", nullptr);
-    IUFillTextVector(&owmAPIKeyTP, owmAPIKeyT, 1, getDeviceName(), "OWM_API_KEY", "OpenWeatherMap", OPTIONS_TAB, IP_RW, 60,
-                     IPS_IDLE);
+    char api_key[256] = {0};
+    IUGetConfigText(getDeviceName(), "OWM_API_KEY", "API_KEY", api_key, 256);
+    owmAPIKeyTP[0].fill("API_KEY", "API Key", api_key);
+    owmAPIKeyTP.fill(getDeviceName(), "OWM_API_KEY", "OpenWeatherMap", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
 
     addParameter("WEATHER_FORECAST", "Weather", 0, 0, 15);
     addParameter("WEATHER_TEMPERATURE", "Temperature (C)", -10, 30, 15);
     addParameter("WEATHER_PRESSURE", "Pressure (hPa)", 900, 1100, 15);
     addParameter("WEATHER_HUMIDITY", "Humidity (%)", 0, 100, 15);
-    addParameter("WEATHER_WIND_SPEED", "Wind (kph)", 0, 20, 15);
-    //    addParameter("WEATHER_WIND_GUST", "Gust (kph)", 0, 20, 15);
-    addParameter("WEATHER_RAIN_HOUR", "Precip (mm)", 0, 0, 15);
-    addParameter("WEATHER_SNOW_HOUR", "Precip (mm)", 0, 0, 15);
+    addParameter("WEATHER_WIND_SPEED", "Wind (m/s)", 0, 20, 15);
+    addParameter("WEATHER_RAIN_HOUR", "Rain precip (mm)", 0, 0, 15);
+    addParameter("WEATHER_SNOW_HOUR", "Snow precip (mm)", 0, 0, 15);
     addParameter("WEATHER_CLOUD_COVER", "Clouds (%)", 0, 100, 15);
     addParameter("WEATHER_CODE", "Status code", 200, 810, 15);
 
@@ -107,30 +124,16 @@ bool OpenWeatherMap::initProperties()
     return true;
 }
 
-void OpenWeatherMap::ISGetProperties(const char *dev)
-{
-    INDI::Weather::ISGetProperties(dev);
-
-    static bool once = true;
-
-    if (once)
-    {
-        once = false;
-        defineProperty(&owmAPIKeyTP);
-
-        loadConfig(true, "OWM_API_KEY");
-    }
-}
-
 bool OpenWeatherMap::ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n)
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
-        if (!strcmp(owmAPIKeyTP.name, name))
+        if (owmAPIKeyTP.isNameMatch(name))
         {
-            IUUpdateText(&owmAPIKeyTP, texts, names, n);
-            owmAPIKeyTP.s = IPS_OK;
-            IDSetText(&owmAPIKeyTP, nullptr);
+            owmAPIKeyTP.update(texts, names, n);
+            owmAPIKeyTP.setState(IPS_OK);
+            owmAPIKeyTP.apply();
+            saveConfig(true, owmAPIKeyTP.getName());
             return true;
         }
     }
@@ -150,19 +153,20 @@ bool OpenWeatherMap::updateLocation(double latitude, double longitude, double el
 
 IPState OpenWeatherMap::updateWeather()
 {
-    CURL *curl;
+    CURL *curl {nullptr};
     CURLcode res;
     std::string readBuffer;
-    char requestURL[MAXRBUF];
+    char errorBuffer[CURL_ERROR_SIZE] = {0};
+    char requestURL[MAXRBUF] = {0};
 
     // If location is not updated yet, return busy
-    if (owmLat == -1000 || owmLong == -1000)
+    if (std::isnan(owmLat) || std::isnan(owmLong))
         return IPS_BUSY;
 
     AutoCNumeric locale;
 
     snprintf(requestURL, MAXRBUF, "http://api.openweathermap.org/data/2.5/weather?lat=%g&lon=%g&appid=%s&units=metric",
-             owmLat, owmLong, owmAPIKeyT[0].text);
+             owmLat, owmLong, owmAPIKeyTP[0].getText());
 
     curl = curl_easy_init();
     if (curl)
@@ -170,169 +174,112 @@ IPState OpenWeatherMap::updateWeather()
         curl_easy_setopt(curl, CURLOPT_URL, requestURL);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errorBuffer);
+        errorBuffer[0] = 0;
         res = curl_easy_perform(curl);
         curl_easy_cleanup(curl);
+        if(res != CURLE_OK)
+        {
+            if(strlen(errorBuffer))
+            {
+                LOGF_ERROR("Error %d reading data: %s", res, errorBuffer);
+            }
+            else
+            {
+                LOGF_ERROR("Error %d reading data: %s", res, curl_easy_strerror(res));
+            }
+            return IPS_ALERT;
+        }
     }
 
-    char srcBuffer[readBuffer.size()];
-    strncpy(srcBuffer, readBuffer.c_str(), readBuffer.size());
-    char *source = srcBuffer;
-    // do not forget terminate source string with 0
-    char *endptr;
-    JsonValue value;
-    JsonAllocator allocator;
-    int status = jsonParse(source, &endptr, &value, allocator);
-    if (status != JSON_OK)
+    double forecast = 0;
+    double temperature = 0;
+    double pressure = 0;
+    double humidity = 0;
+    double wind = 0;
+    double rain = 0;
+    double snow = 0;
+    double clouds = 0;
+    int code = 0;
+
+    try
     {
-        LOGF_ERROR("%s at %zd", jsonStrError(status), endptr - source);
-        LOGF_DEBUG("%s", requestURL);
-        LOGF_DEBUG("%s", readBuffer.c_str());
+        json weatherReport = json::parse(readBuffer);
+
+        weatherReport["weather"][0]["id"].get_to(code);
+        if (code >= 200 && code < 300)
+        {
+            // Thunderstorm
+            forecast = 2;
+        }
+        else if (code >= 300 && code < 400)
+        {
+            // Drizzle
+            forecast = 2;
+        }
+        else if (code >= 500 && code < 700)
+        {
+            // Rain and snow
+            forecast = 2;
+        }
+        else if (code >= 700 && code < 800)
+        {
+            // Mist and so on
+            forecast = 1;
+        }
+        else if (code == 800)
+        {
+            // Clear!
+            forecast = 0;
+        }
+        else if (code >= 801 && code <= 803)
+        {
+            // Some clouds
+            forecast = 1;
+        }
+        else if (code >= 804 && code < 900)
+        {
+            // Overcast
+            forecast = 2;
+        }
+
+        // Temperature
+        weatherReport["main"]["temp"].get_to(temperature);
+        // Pressure
+        weatherReport["main"]["pressure"].get_to(pressure);
+        // Humidity
+        weatherReport["main"]["humidity"].get_to(humidity);
+        // Wind
+        weatherReport["wind"]["speed"].get_to(wind);
+        // Cloud
+        weatherReport["clouds"]["all"].get_to(clouds);
+        try
+        {
+            // Rain
+            weatherReport["rain"]["h"].get_to(rain);
+            // Snow
+            weatherReport["snow"]["h"].get_to(snow);
+        }
+        // Ignore error since these values do not exist in all reports.
+        catch (json::exception &e) {}
+
+    }
+    catch (json::exception &e)
+    {
+        // output exception information
+        LOGF_ERROR("Error parsing weather report %s id: %d", e.what(), e.id);
         return IPS_ALERT;
     }
 
-    JsonIterator it;
-    JsonIterator observationIterator;
-
-    for (it = begin(value); it != end(value); ++it)
-    {
-        if (!strcmp(it->key, "weather"))
-        {
-            // This is an array of weather conditions
-            for (auto i : it->value)
-            {
-                for (observationIterator = begin(i->value); observationIterator != end(i->value); ++observationIterator)
-                {
-                    if (!strcmp(observationIterator->key, "id"))
-                    {
-                        int id;
-                        if (observationIterator->value.isDouble())
-                            id = observationIterator->value.toNumber();
-                        else
-                            id = atoi(observationIterator->value.toString());
-
-                        setParameterValue("WEATHER_CODE", id);
-
-                        if (id >= 200 && id < 300)
-                        {
-                            // Thunderstorm
-                            setParameterValue("WEATHER_FORECAST", 2);
-                        }
-                        else if (id >= 300 && id < 400)
-                        {
-                            // Drizzle
-                            setParameterValue("WEATHER_FORECAST", 2);
-                        }
-                        else if (id >= 500 && id < 700)
-                        {
-                            // Rain and snow
-                            setParameterValue("WEATHER_FORECAST", 2);
-                        }
-                        else if (id >= 700 && id < 800)
-                        {
-                            // Mist and so on
-                            setParameterValue("WEATHER_FORECAST", 1);
-                        }
-                        else if (id == 800)
-                        {
-                            // Clear!
-                            setParameterValue("WEATHER_FORECAST", 0);
-                        }
-                        else if (id >= 801 && id <= 803)
-                        {
-                            // Some clouds
-                            setParameterValue("WEATHER_FORECAST", 1);
-                        }
-                        else if (id >= 804 && id < 900)
-                        {
-                            // Overcast
-                            setParameterValue("WEATHER_FORECAST", 2);
-                        }
-                    }
-                }
-            }
-        }
-        else if (!strcmp(it->key, "main"))
-        {
-            // Temperature, pressure, humidity
-            for (observationIterator = begin(it->value); observationIterator != end(it->value); ++observationIterator)
-            {
-                if (!strcmp(observationIterator->key, "temp"))
-                {
-                    if (observationIterator->value.isDouble())
-                        setParameterValue("WEATHER_TEMPERATURE", observationIterator->value.toNumber());
-                    else
-                        setParameterValue("WEATHER_TEMPERATURE", atof(observationIterator->value.toString()));
-                }
-                else if (!strcmp(observationIterator->key, "pressure"))
-                {
-                    if (observationIterator->value.isDouble())
-                        setParameterValue("WEATHER_PRESSURE", observationIterator->value.toNumber());
-                    else
-                        setParameterValue("WEATHER_PRESSURE", atof(observationIterator->value.toString()));
-                }
-                else if (!strcmp(observationIterator->key, "humidity"))
-                {
-                    if (observationIterator->value.isDouble())
-                        setParameterValue("WEATHER_HUMIDITY", observationIterator->value.toNumber());
-                    else
-                        setParameterValue("WEATHER_HUMIDITY", atof(observationIterator->value.toString()));
-                }
-            }
-        }
-        else if (!strcmp(it->key, "wind"))
-        {
-            for (observationIterator = begin(it->value); observationIterator != end(it->value); ++observationIterator)
-            {
-                if (!strcmp(observationIterator->key, "speed"))
-                {
-                    if (observationIterator->value.isDouble())
-                        setParameterValue("WEATHER_WIND_SPEED", observationIterator->value.toNumber());
-                    else
-                        setParameterValue("WEATHER_WIND_SPEED", atof(observationIterator->value.toString()));
-                }
-            }
-        }
-        else if (!strcmp(it->key, "clouds"))
-        {
-            for (observationIterator = begin(it->value); observationIterator != end(it->value); ++observationIterator)
-            {
-                if (!strcmp(observationIterator->key, "all"))
-                {
-                    if (observationIterator->value.isDouble())
-                        setParameterValue("WEATHER_CLOUD_COVER", observationIterator->value.toNumber());
-                    else
-                        setParameterValue("WEATHER_CLOUD_COVER", atof(observationIterator->value.toString()));
-                }
-            }
-        }
-        else if (!strcmp(it->key, "rain"))
-        {
-            for (observationIterator = begin(it->value); observationIterator != end(it->value); ++observationIterator)
-            {
-                if (!strcmp(observationIterator->key, "3h"))
-                {
-                    if (observationIterator->value.isDouble())
-                        setParameterValue("WEATHER_RAIN_HOUR", observationIterator->value.toNumber());
-                    else
-                        setParameterValue("WEATHER_RAIN_HOUR", atof(observationIterator->value.toString()));
-                }
-            }
-        }
-        else if (!strcmp(it->key, "snow"))
-        {
-            for (observationIterator = begin(it->value); observationIterator != end(it->value); ++observationIterator)
-            {
-                if (!strcmp(observationIterator->key, "3h"))
-                {
-                    if (observationIterator->value.isDouble())
-                        setParameterValue("WEATHER_SNOW_HOUR", observationIterator->value.toNumber());
-                    else
-                        setParameterValue("WEATHER_SNOW_HOUR", atof(observationIterator->value.toString()));
-                }
-            }
-        }
-    }
-
+    setParameterValue("WEATHER_FORECAST", forecast);
+    setParameterValue("WEATHER_TEMPERATURE", temperature);
+    setParameterValue("WEATHER_PRESSURE", pressure);
+    setParameterValue("WEATHER_HUMIDITY", humidity);
+    setParameterValue("WEATHER_WIND_SPEED", wind);
+    setParameterValue("WEATHER_RAIN_HOUR", rain);
+    setParameterValue("WEATHER_SNOW_HOUR", snow);
+    setParameterValue("WEATHER_CLOUD_COVER", clouds);
+    setParameterValue("WEATHER_CODE", code);
     return IPS_OK;
 }
 
@@ -340,7 +287,7 @@ bool OpenWeatherMap::saveConfigItems(FILE *fp)
 {
     INDI::Weather::saveConfigItems(fp);
 
-    IUSaveConfigText(fp, &owmAPIKeyTP);
+    owmAPIKeyTP.save(fp);
 
     return true;
 }

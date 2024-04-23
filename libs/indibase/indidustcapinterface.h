@@ -21,12 +21,13 @@
 #pragma once
 
 #include "indibase.h"
+#include "indidriver.h"
 
 /**
  * \class DustCapInterface
    \brief Provides interface to implement remotely controlled dust cover
 
-   \e IMPORTANT: initDustCapProperties() must be called before any other function to initilize the Dust Cap properties.
+   \e IMPORTANT: initDustCapProperties() must be called before any other function to initialize the Dust Cap properties.
 
    \e IMPORTANT: processDustCapSwitch() must be called in your driver ISNewSwitch function.
 \author Jasem Mutlaq
@@ -36,43 +37,43 @@ namespace INDI
 
 class DustCapInterface
 {
-  public:
-    enum
-    {
-        CAP_PARK,
-        CAP_UNPARK
-    };
+    public:
+        enum
+        {
+            CAP_PARK,
+            CAP_UNPARK
+        };
 
-  protected:
-    DustCapInterface() = default;
-    virtual ~DustCapInterface() = default;
+    protected:
+        DustCapInterface() = default;
+        virtual ~DustCapInterface() = default;
 
-    /**
-         * @brief Park dust cap (close cover). Must be implemented by child.
-         * @return If command completed immediatly, return IPS_OK. If command is in progress, return IPS_BUSY. If there is an error, return IPS_ALERT
-         */
-    virtual IPState ParkCap();
+        /**
+             * @brief Park dust cap (close cover). Must be implemented by child.
+             * @return If command completed immediately, return IPS_OK. If command is in progress, return IPS_BUSY. If there is an error, return IPS_ALERT
+             */
+        virtual IPState ParkCap();
 
-    /**
-         * @brief unPark dust cap (open cover). Must be implemented by child.
-         * @return If command completed immediatly, return IPS_OK. If command is in progress, return IPS_BUSY. If there is an error, return IPS_ALERT
-         */
-    virtual IPState UnParkCap();
+        /**
+             * @brief unPark dust cap (open cover). Must be implemented by child.
+             * @return If command completed immediately, return IPS_OK. If command is in progress, return IPS_BUSY. If there is an error, return IPS_ALERT
+             */
+        virtual IPState UnParkCap();
 
-    /** \brief Initilize dust cap properties. It is recommended to call this function within initProperties() of your primary device
-            \param deviceName Name of the primary device
-            \param groupName Group or tab name to be used to define focuser properties.
-        */
-    void initDustCapProperties(const char *deviceName, const char *groupName);
+        /** \brief Initialize dust cap properties. It is recommended to call this function within initProperties() of your primary device
+                \param deviceName Name of the primary device
+                \param groupName Group or tab name to be used to define focuser properties.
+            */
+        void initDustCapProperties(const char *deviceName, const char *groupName);
 
-    /** \brief Process dust cap switch properties */
-    bool processDustCapSwitch(const char *dev, const char *name, ISState *states, char *names[], int n);
+        /** \brief Process dust cap switch properties */
+        bool processDustCapSwitch(const char *dev, const char *name, ISState *states, char *names[], int n);
 
-    // Open/Close cover
-    ISwitchVectorProperty ParkCapSP;
-    ISwitch ParkCapS[2];
+        // Open/Close cover
+        ISwitchVectorProperty ParkCapSP;
+        ISwitch ParkCapS[2];
 
-  private:
-    char dustCapName[MAXINDIDEVICE];
+    private:
+        char dustCapName[MAXINDIDEVICE];
 };
 }

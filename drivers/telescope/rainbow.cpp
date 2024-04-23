@@ -33,7 +33,7 @@ static std::unique_ptr<Rainbow> scope(new Rainbow());
 
 Rainbow::Rainbow() : INDI::Telescope ()
 {
-    setVersion(1, 1);
+    setVersion(1, 3);
 
     SetTelescopeCapability(TELESCOPE_CAN_GOTO |
                            TELESCOPE_CAN_SYNC |
@@ -42,8 +42,8 @@ Rainbow::Rainbow() : INDI::Telescope ()
                            TELESCOPE_CAN_CONTROL_TRACK |
                            TELESCOPE_HAS_TIME |
                            TELESCOPE_HAS_LOCATION |
-                           TELESCOPE_HAS_TRACK_MODE |
-                           TELESCOPE_HAS_PIER_SIDE_SIMULATION, 4);
+                           TELESCOPE_HAS_PIER_SIDE |
+                           TELESCOPE_HAS_TRACK_MODE, 4);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -66,8 +66,42 @@ bool Rainbow::initProperties()
     SetParkDataType(PARK_AZ_ALT);
 
     // Homing
-    IUFillSwitch(&HomeS[0], "HOME", "Go Home", ISS_OFF);
-    IUFillSwitchVector(&HomeSP, HomeS, 1, getDeviceName(), "HOME", "Homing", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60,
+    IUFillSwitch(&HomeS[0], "GO", "Go", ISS_OFF);
+    IUFillSwitchVector(&HomeSP, HomeS, 1, getDeviceName(), "TELESCOPE_HOME", "Home", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60,
+                       IPS_IDLE);
+
+    // Star Alignment on Sync
+    IUFillSwitch(&SaveAlignBeforeSyncS[STAR_ALIGNMENT_ENABLED], "STAR_ALIGNMENT_ENABLED", "Enabled", ISS_OFF);
+    IUFillSwitch(&SaveAlignBeforeSyncS[STAR_ALIGNMENT_DISABLED], "STAR_ALIGNMENT_DISABLED", "Disabled", ISS_ON);
+    IUFillSwitchVector(&SaveAlignBeforeSyncSP, SaveAlignBeforeSyncS, 2, getDeviceName(),
+                       "STAR_ALIGNMENT", "Star Alignment", ALIGNMENT_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+
+    // Mount's versions
+    IUFillText(&RSTVersionsT[FIRMWARE], "FIRMWARE", "Firmware Version", "");
+    IUFillText(&RSTVersionsT[SERIALNUMBER], "SERIALNUMBER", "Serial Number", "");
+    IUFillTextVector(&RSTVersionsTP, RSTVersionsT, 2, getDeviceName(), "RST_VERSIONS", "Versions", GENERAL_INFO_TAB, IP_RO, 0,
+                     IPS_IDLE);
+
+    // Pull Voltage & Temperatures (possible to disable to reduce load on Serial bus)
+    IUFillSwitch(&PullVoltTempS[PULL_VOLTTEMP_ENABLED], "PULL_VOLTTEMP_ENABLED", "Enabled", ISS_OFF);
+    IUFillSwitch(&PullVoltTempS[PULL_VOLTTEMP_DISABLED], "PULL_VOLTTEMP_DISABLED", "Disabled", ISS_ON);
+    IUFillSwitchVector(&PullVoltTempSP, PullVoltTempS, 2, getDeviceName(),
+                       "PULL_VOLTTEMP", "Pull V. & T.", GENERAL_INFO_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+
+    // Voltage & Temperatures
+    IUFillNumber(&RSTVoltTempN[VOLTAGE], "VOLTAGE", "Input Voltage (V)", "%2.1f", 0, 20., 0., 0.);
+    IUFillNumber(&RSTVoltTempN[BOARD_TEMPERATURE], "BOARD_TEMPERATURE", "Board Temp. (°C)", "%2.1f", -50, 70., 0., 0.);
+    IUFillNumber(&RSTVoltTempN[RA_M_TEMPERATURE], "RA_M_TEMPERATURE", "RA-Motor Temp. (°C)", "%2.1f", -50, 70., 0., 0.);
+    IUFillNumber(&RSTVoltTempN[DE_M_TEMPERATURE], "DE_M_TEMPERATURE", "DEC-Motor Temp. (°C)", "%2.1f", -50, 70., 0., 0.);
+    IUFillNumberVector(&RSTVoltTempNP, RSTVoltTempN, 4, getDeviceName(), "RST_VOLT_TEMP", "Volt. & Temp.", GENERAL_INFO_TAB,
+                       IP_RO, 0,
+                       IPS_IDLE);
+
+    // Motor powers
+    IUFillNumber(&RSTMotorPowN[RA_M_POWER], "RA_M_POWER", "RA-Motor (%)", "%3.1f", 0, 100., 0., 0.);
+    IUFillNumber(&RSTMotorPowN[DE_M_POWER], "DE_M_POWER", "DE-Motor (%)", "%3.1f", 0, 100., 0., 0.);
+    IUFillNumberVector(&RSTMotorPowNP, RSTMotorPowN, 2, getDeviceName(), "RST_MOTOR_POW", "Motor Power", GENERAL_INFO_TAB,
+                       IP_RO, 0,
                        IPS_IDLE);
 
     // Horizontal Coords
@@ -83,6 +117,12 @@ bool Rainbow::initProperties()
 
     IUFillNumber(&GuideRateN[0], "GUIDE_RATE", "x Sidereal", "%g", 0.1, 1.0, 0.1, 0.5);
     IUFillNumberVector(&GuideRateNP, GuideRateN, 1, getDeviceName(), "GUIDE_RATE", "Guiding Rate", MOTION_TAB, IP_RW, 0,
+                       IPS_IDLE);
+
+    IUFillNumber(&SlewSpeedsN[SLEW_SPEED_MAX], "SLEW_SPEED_MAX", "Max (x Siderial)", "%g", 0, 2000, 0, 0);
+    IUFillNumber(&SlewSpeedsN[SLEW_SPEED_FIND], "SLEW_SPEED_FIND", "Find (x Siderial)", "%g", 0, 2000, 0, 0);
+    IUFillNumber(&SlewSpeedsN[SLEW_SPEED_CENTERING], "SLEW_SPEED_CENTERING", "Centering (x Siderial)", "%g", 0, 2000, 0, 0);
+    IUFillNumberVector(&SlewSpeedsNP, SlewSpeedsN, 3, getDeviceName(), "SLEW_SPEED", "Slew speed", MOTION_TAB, IP_RW, 0,
                        IPS_IDLE);
 
     setDriverInterface(getDriverInterface() | GUIDER_INTERFACE);
@@ -103,15 +143,21 @@ bool Rainbow::updateProperties()
 
     if (isConnected())
     {
-        getStartupStatus();
-
         defineProperty(&HorizontalCoordsNP);
         defineProperty(&HomeSP);
 
         defineProperty(&GuideNSNP);
         defineProperty(&GuideWENP);
         defineProperty(&GuideRateNP);
+        defineProperty(&SlewSpeedsNP);
 
+        defineProperty(&SaveAlignBeforeSyncSP);
+        defineProperty(&RSTVersionsTP);
+        defineProperty(&PullVoltTempSP);
+        defineProperty(&RSTVoltTempNP);
+        defineProperty(&RSTMotorPowNP);
+
+        getStartupStatus();
     }
     else
     {
@@ -121,6 +167,13 @@ bool Rainbow::updateProperties()
         deleteProperty(GuideNSNP.name);
         deleteProperty(GuideWENP.name);
         deleteProperty(GuideRateNP.name);
+        deleteProperty(SlewSpeedsNP.name);
+
+        deleteProperty(SaveAlignBeforeSyncSP.name);
+        deleteProperty(RSTVersionsTP.name);
+        deleteProperty(PullVoltTempSP.name);
+        deleteProperty(RSTVoltTempNP.name);
+        deleteProperty(RSTMotorPowNP.name);
     }
 
     return true;
@@ -193,6 +246,24 @@ bool Rainbow::ISNewNumber(const char *dev, const char *name, double values[], ch
             IDSetNumber(&GuideRateNP, nullptr);
             return true;
         }
+        // Slew speeds
+        else if (!strcmp(name, SlewSpeedsNP.name))
+        {
+
+            if (setSlewSpeedVal(SLEW_SPEED_MAX, values[SLEW_SPEED_MAX])
+                    && setSlewSpeedVal(SLEW_SPEED_FIND, values[SLEW_SPEED_FIND])
+                    && setSlewSpeedVal(SLEW_SPEED_CENTERING, values[SLEW_SPEED_CENTERING])
+               )
+            {
+                IUUpdateNumber(&SlewSpeedsNP, values, names, n);
+                SlewSpeedsNP.s = IPS_OK;
+                LOG_INFO("Slew speeds updated.");
+            }
+            else
+                SlewSpeedsNP.s = IPS_ALERT;
+            IDSetNumber(&SlewSpeedsNP, nullptr);
+            return true;
+        }
         else
             processGuiderProperties(name, values, names, n);
     }
@@ -230,6 +301,43 @@ bool Rainbow::ISNewSwitch(const char *dev, const char *name, ISState *states, ch
             IDSetSwitch(&HomeSP, nullptr);
             return true;
         }
+        // Star Align
+        else if (!strcmp(SaveAlignBeforeSyncSP.name, name))
+        {
+
+            IUUpdateSwitch(&SaveAlignBeforeSyncSP, states, names, n);
+            SaveAlignBeforeSyncSP.s = IPS_OK;
+            saveConfig(true, SaveAlignBeforeSyncSP.name);
+            IDSetSwitch(&SaveAlignBeforeSyncSP, nullptr);
+            return true;
+        }
+        // Pull RST's Voltage and Temperatures
+        else if (!strcmp(PullVoltTempSP.name, name))
+        {
+            IUUpdateSwitch(&PullVoltTempSP, states, names, n);
+            if (PullVoltTempS[PULL_VOLTTEMP_DISABLED].s == ISS_ON)
+            {
+                RSTVoltTempN[VOLTAGE].value = 0.;
+                RSTVoltTempN[BOARD_TEMPERATURE].value = 0.;
+                RSTVoltTempN[RA_M_TEMPERATURE].value = 0.;
+                RSTVoltTempN[DE_M_TEMPERATURE].value = 0.;
+                RSTMotorPowN[RA_M_POWER].value = 0.;
+                RSTMotorPowN[DE_M_POWER].value = 0.;
+                RSTVoltTempNP.s = IPS_IDLE;
+                IDSetNumber(&RSTVoltTempNP, nullptr);
+                RSTMotorPowNP.s = IPS_IDLE;
+                IDSetNumber(&RSTMotorPowNP, nullptr);
+                PullVoltTempSP.s = IPS_IDLE;
+                LOG_INFO("Pulling RST's Voltage and Temperatures set to: off");
+            }
+            else
+            {
+                PullVoltTempSP.s = IPS_OK;
+                LOG_INFO("Pulling RST's Voltage and Temperatures set to: on");
+            }
+            IDSetSwitch(&PullVoltTempSP, nullptr);
+            return true;
+        }
 
     }
 
@@ -241,12 +349,15 @@ bool Rainbow::ISNewSwitch(const char *dev, const char *name, ISState *states, ch
 /////////////////////////////////////////////////////////////////////////////////////
 void Rainbow::getStartupStatus()
 {
+    getFirmwareVersion();
     LOGF_INFO("Detected firmware %s", m_Version.c_str());
 
     if (getTrackingState())
         IDSetSwitch(&TrackStateSP, nullptr);
     if (getGuideRate())
         IDSetNumber(&GuideRateNP, nullptr);
+    if (getSlewSpeedVal(SLEW_SPEED_MAX) && (getSlewSpeedVal(SLEW_SPEED_FIND) && getSlewSpeedVal(SLEW_SPEED_CENTERING)))
+        IDSetNumber(&SlewSpeedsNP, nullptr);
 
     double longitude = 0, latitude = 90;
     // Get value from config file if it exists.
@@ -332,6 +443,23 @@ bool Rainbow::getFirmwareVersion()
 
     // :AV190905 --> 190905
     m_Version = std::string(res + 3);
+
+    // Write Firmware and Serial Number to INDI Control Panel
+    if (isConnected()) // executed onlyafter properties are updated
+    {
+        char fw[16] = {0}, sn[16] = {0};
+        sscanf(res + 3, "%6s", fw);
+        memset(res, 0, sizeof res);
+        IUSaveText(&RSTVersionsT[FIRMWARE], fw);
+
+        if (sendCommand(":AS#", res) == false)
+            return false;
+        sscanf(res + 3, "%6s", sn);
+        IUSaveText(&RSTVersionsT[SERIALNUMBER], sn);
+
+        RSTVersionsTP.s = IPS_OK;
+        IDSetText(&RSTVersionsTP, nullptr);
+    }
     return true;
 }
 
@@ -394,7 +522,41 @@ bool Rainbow::getGuideRate()
     memcpy(rate, res + 5, 3);
 
     GuideRateN[0].value = std::stod(rate);
+    GuideRateNP.s = IPS_OK;
+    return true;
+}
 
+/////////////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////////////
+bool Rainbow::setSlewSpeedVal(int speedtype, double rate)
+{
+    char cmd[DRIVER_LEN] = {0};
+    snprintf(cmd, DRIVER_LEN, ":Cu%d=%g#", speedtype == SLEW_SPEED_MAX ? 3 : (speedtype == SLEW_SPEED_FIND ? 2 : 1), rate);
+    LOGF_INFO("slew speed set to enum %d and value %g", speedtype, rate);
+    return sendCommand(cmd);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////
+///
+/////////////////////////////////////////////////////////////////////////////////////
+bool Rainbow::getSlewSpeedVal(int speedtype)
+{
+    char res[DRIVER_LEN] = {0};
+    char rate[4] = {0};
+    char cmd[DRIVER_LEN] = {0};
+    snprintf(cmd, DRIVER_LEN, ":CU%d#", speedtype == SLEW_SPEED_MAX ? 3 : (speedtype == SLEW_SPEED_FIND ? 2 : 1));
+    if (sendCommand(cmd, res))
+    {
+        memcpy(rate, res + 5, 4);
+        SlewSpeedsN[speedtype].value = std::stod(rate);
+        SlewSpeedsNP.s = IPS_OK;
+    }
+    else
+    {
+        SlewSpeedsNP.s = IPS_ALERT;
+        return false;
+    }
     return true;
 }
 
@@ -594,7 +756,41 @@ bool Rainbow::ReadScopeStatus()
     }
     IDSetNumber(&HorizontalCoordsNP, nullptr);
 
+    setPierSide(getSideOfPier());
+
     NewRaDec(m_CurrentRA, m_CurrentDE);
+
+    if (PullVoltTempS[PULL_VOLTTEMP_ENABLED].s == ISS_ON)
+    {
+        // Get Voltage and Temperatures
+        char res[DRIVER_LEN] = {0};
+        float v, bT, rT, dT;
+        if (sendCommand(":Cv#", res) == false)
+            return false;
+        sscanf(res + 3, "%f", &v);
+        memset(res, 0, sizeof res);
+        RSTVoltTempN[VOLTAGE].value = v;
+        if (sendCommand(":CT#", res) == false)
+            return false;
+        sscanf(res + 3, "%f|%f|%f", &bT, &rT, &dT);
+        memset(res, 0, sizeof res);
+        RSTVoltTempN[BOARD_TEMPERATURE].value = bT;
+        RSTVoltTempN[RA_M_TEMPERATURE].value = rT;
+        RSTVoltTempN[DE_M_TEMPERATURE].value = dT;
+        RSTVoltTempNP.s = IPS_OK;
+        IDSetNumber(&RSTVoltTempNP, nullptr);
+
+        // Get Motor Powers
+        float rP, dP;
+        if (sendCommand(":CP#", res) == false)
+            return false;
+        sscanf(res + 3, "%f|%f", &dP, &rP);
+        memset(res, 0, sizeof res);
+        RSTMotorPowN[RA_M_POWER].value = rP;
+        RSTMotorPowN[DE_M_POWER].value = dP;
+        RSTMotorPowNP.s = IPS_OK;
+        IDSetNumber(&RSTMotorPowNP, nullptr);
+    }
     return true;
 }
 
@@ -922,19 +1118,26 @@ bool Rainbow::Abort()
 /////////////////////////////////////////////////////////////////////////////
 bool Rainbow::Sync(double ra, double dec)
 {
-    char cmd[DRIVER_LEN] = {0};
 
-    snprintf(cmd, DRIVER_LEN, ":Ck%07.3f%c%06.3f#", ra * 15.0, dec >= 0 ? '+' : '-', std::fabs(dec));
+    char cmd[DRIVER_LEN] = {0};
+    if (SaveAlignBeforeSyncS[STAR_ALIGNMENT_ENABLED].s == ISS_ON)
+    {
+        snprintf(cmd, DRIVER_LEN, ":CN%07.3f%c%06.3f#", ra * 15.0, dec >= 0 ? '+' : '-', std::fabs(dec));
+    }
+    else
+    {
+        snprintf(cmd, DRIVER_LEN, ":Ck%07.3f%c%06.3f#", ra * 15.0, dec >= 0 ? '+' : '-', std::fabs(dec));
+    }
 
     if (sendCommand(cmd))
     {
         char RAStr[64] = {0}, DecStr[64] = {0};
         fs_sexa(RAStr, ra, 2, 36000);
         fs_sexa(DecStr, dec, 2, 36000);
-        LOGF_INFO("Synced to RA %s DE %s", RAStr, DecStr);
+        LOGF_INFO("Synced to RA %s DE %s%s", RAStr, DecStr,
+                  SaveAlignBeforeSyncS[STAR_ALIGNMENT_ENABLED].s == ISS_ON ? ", and saved as alignment point." : "");
         return true;
     }
-
     return false;
 }
 
@@ -1319,6 +1522,10 @@ bool Rainbow::sendScopeTime()
     char ctime[MAXINDINAME] = {0};
     struct tm ltm;
     struct tm utm;
+
+    memset(&ltm, 0, sizeof(ltm));
+    memset(&utm, 0, sizeof(utm));
+
     time_t time_epoch;
 
     double offset = 0;
@@ -1357,6 +1564,7 @@ bool Rainbow::sendScopeTime()
         return false;
     }
 
+    ltm.tm_isdst = 0;
     // Get local time epoch in UNIX seconds
     time_epoch = mktime(&ltm);
 
@@ -1448,6 +1656,36 @@ bool Rainbow::sendScopeLocation()
     }
 
     return true;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+/// Send Command
+/////////////////////////////////////////////////////////////////////////////
+Rainbow::TelescopePierSide Rainbow::getSideOfPier()
+{
+    float decAxisAlignmentOffset {0}, decAxis {0};
+    char cyResponse[DRIVER_LEN] = {0}, cg3Response[DRIVER_LEN] = {0};
+
+    if (!sendCommand(":CG3#", cg3Response))
+        return PIER_UNKNOWN;
+
+    sscanf(cg3Response + 4, "%f", &decAxisAlignmentOffset);
+
+    if (!sendCommand(":CY#", cyResponse))
+        return PIER_UNKNOWN;
+
+    char rotationAngle[16] = {0};
+
+    strncpy(rotationAngle, cyResponse + 3, 7);
+
+    sscanf(rotationAngle, "%f", &decAxis);
+
+    auto offset = decAxis - decAxisAlignmentOffset;
+
+    if (offset > 90)
+        return PIER_WEST;
+    else
+        return PIER_EAST;
 }
 
 /////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,5 @@
 /*******************************************************************************
+ Copyright(c) 2023 Jasem Mutlaq
  Copyright(c) 2016 CloudMakers, s. r. o.. All rights reserved.
 
  This library is free software; you can redistribute it and/or
@@ -19,38 +20,49 @@
 #pragma once
 
 #include "indidome.h"
+#include "indipropertyswitch.h"
+#include "indipropertytext.h"
 
 class DomeScript : public INDI::Dome
 {
-  public:
-    DomeScript();
-    virtual ~DomeScript() = default;
+    public:
+        DomeScript();
+        virtual ~DomeScript() = default;
 
-    virtual const char *getDefaultName() override;
-    virtual bool initProperties() override;
-    virtual bool saveConfigItems(FILE *fp) override;
+        virtual const char *getDefaultName() override;
+        virtual bool initProperties() override;
+        virtual bool saveConfigItems(FILE *fp) override;
 
-    void ISGetProperties(const char *dev) override;
-    bool ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) override;
-    bool updateProperties() override;
+        void ISGetProperties(const char *dev) override;
+        virtual bool ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) override;
+        virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
 
-  protected:
-    void TimerHit() override;
-    virtual bool Connect() override;
-    virtual bool Disconnect() override;
-    virtual IPState Move(DomeDirection dir, DomeMotionCommand operation) override;
-    virtual IPState MoveAbs(double az) override;
-    virtual IPState Park() override;
-    virtual IPState UnPark() override;
-    virtual IPState ControlShutter(ShutterOperation operation) override;
-    virtual bool Abort() override;
+        bool updateProperties() override;
 
-  private:
-    bool ReadDomeStatus();
-    bool RunScript(int script, ...);
+    protected:
+        void TimerHit() override;
+        virtual bool Connect() override;
+        virtual bool Disconnect() override;
+        virtual IPState Move(DomeDirection dir, DomeMotionCommand operation) override;
+        virtual IPState MoveAbs(double az) override;
+        virtual IPState Park() override;
+        virtual IPState UnPark() override;
+        virtual IPState ControlShutter(ShutterOperation operation) override;
+        virtual bool Abort() override;
 
-    ITextVectorProperty ScriptsTP;
-    IText ScriptsT[15] {};
-    double TargetAz { 0 };
-    int TimeSinceUpdate { 0 };
+    private:
+        bool ReadDomeStatus();
+        bool RunScript(int script, ...);
+
+        INDI::PropertyText ScriptsTP {15};
+
+        INDI::PropertySwitch TypeSP {2};
+        enum
+        {
+            Dome,
+            Rolloff
+        };
+
+        double TargetAz { 0 };
+        int TimeSinceUpdate { 0 };
 };

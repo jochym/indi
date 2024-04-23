@@ -29,40 +29,51 @@
 
 class WeatherMeta : public INDI::DefaultDevice
 {
-  public:
-    WeatherMeta();
-    virtual ~WeatherMeta() = default;
+    public:
+        WeatherMeta();
+        virtual ~WeatherMeta() = default;
 
-    //  Generic indi device entries
-    bool Connect() override;
-    bool Disconnect() override;
-    const char *getDefaultName() override;
+        //  Generic indi device entries
+        bool Connect() override;
+        bool Disconnect() override;
+        const char *getDefaultName() override;
 
-    virtual bool ISSnoopDevice(XMLEle *root) override;
+        virtual bool ISSnoopDevice(XMLEle *root) override;
 
-    virtual bool initProperties() override;
-    virtual bool updateProperties() override;
-    virtual void ISGetProperties(const char *dev) override;
-    virtual bool ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) override;
+        virtual bool initProperties() override;
+        virtual bool updateProperties() override;
+        virtual void ISGetProperties(const char *dev) override;
+        virtual bool ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) override;
 
-  protected:
-    virtual bool saveConfigItems(FILE *fp) override;
+    protected:
+        virtual bool saveConfigItems(FILE *fp) override;
 
-  private:
-    void updateOverallState();
-    void updateUpdatePeriod();
+    private:
+        void updateOverallState();
+        void updateUpdatePeriod();
 
-    // Active stations
-    IText ActiveDeviceT[4] {};
-    ITextVectorProperty ActiveDeviceTP;
+        // Active stations
+        INDI::PropertyText ActiveDeviceTP {4};
+        enum
+        {
+            ACTIVE_WEATHER_1,
+            ACTIVE_WEATHER_2,
+            ACTIVE_WEATHER_3,
+            ACTIVE_WEATHER_4
+        };
 
-    // Stations status
-    ILight StationL[4];
-    ILightVectorProperty StationLP;
+        // Stations status
+        INDI::PropertyLight StationLP {4};
+        enum
+        {
+            STATION_STATUS_1,
+            STATION_STATUS_2,
+            STATION_STATUS_3,
+            STATION_STATUS_4
+        };
 
-    // Update Period
-    INumber UpdatePeriodN[1];
-    INumberVectorProperty UpdatePeriodNP;
+        // Update Period
+        INDI::PropertyNumber UpdatePeriodNP {1};
 
-    double updatePeriods[4];
+        double updatePeriods[4];
 };

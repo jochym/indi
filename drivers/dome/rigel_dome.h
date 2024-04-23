@@ -21,7 +21,7 @@
 *******************************************************************************/
 #pragma once
 
-#include "indibase/indidome.h"
+#include "indidome.h"
 
 class RigelDome : public INDI::Dome
 {
@@ -35,6 +35,7 @@ class RigelDome : public INDI::Dome
         virtual ~RigelDome() override = default;
 
         virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
+        virtual bool ISNewNumber(const char * dev, const char * name, double values[], char * names[], int n) override;
         virtual const char *getDefaultName() override;
 
     protected:
@@ -78,6 +79,7 @@ class RigelDome : public INDI::Dome
         bool readFirmware();
         bool readModel();
         bool readPosition();
+        bool readHomePosition();
         bool getStartupValues();
         bool readState();
         bool readBatteryLevels();
@@ -89,6 +91,7 @@ class RigelDome : public INDI::Dome
         bool setParkAz(double az);
         bool home();
         bool calibrate();
+        bool setHome(double az);
 
         ///////////////////////////////////////////////////////////////////////////////
         /// Communication Functions
@@ -119,6 +122,10 @@ class RigelDome : public INDI::Dome
             INFO_BATTERY,
         };
 
+        // Home angle
+        INumber HomePositionN[1];
+        INumberVectorProperty HomePositionNP;
+
         /////////////////////////////////////////////////////////////////////////////
         /// Static Helper Values
         /////////////////////////////////////////////////////////////////////////////
@@ -127,6 +134,6 @@ class RigelDome : public INDI::Dome
         static const char DRIVER_STOP_CHAR { 0x0D };
         // Wait up to a maximum of 3 seconds for serial input
         static constexpr const uint8_t DRIVER_TIMEOUT {3};
-        // Maximum buffer for sending/receving.
+        // Maximum buffer for sending/receiving.
         static constexpr const uint8_t DRIVER_LEN {64};
 };

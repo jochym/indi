@@ -2,10 +2,11 @@
     INDI Explore Scientific PMC8 driver
 
     Copyright (C) 2017 Michael Fulbright
-    Additional contributors: 
+    Additional contributors:
         Thomas Olson, Copyright (C) 2019
-        Karl Rees, Copyright (C) 2019-2021
-        
+        Karl Rees, Copyright (C) 2019-2023
+        Martin Ruiz, Copyright (C) 2023
+
     Based on IEQPro driver.
 
     This library is free software; you can redistribute it and/or
@@ -29,7 +30,7 @@
 
 #include "inditelescope.h"
 
-// if tracking speed is above this (arcsec / sec) then assume mount is slewing 
+// if tracking speed is above this (arcsec / sec) then assume mount is slewing
 // this is just less than 3x sidereal
 // which is what we would normally see if we are tracking
 // and start moving east at the min move rate (4x sidereal)
@@ -38,7 +39,8 @@
 // set max settable slew rate as 833x sidereal
 #define PMC8_MAX_MOVE_RATE (833*15)
 
-typedef enum {
+typedef enum
+{
     ST_STOPPED,
     ST_TRACKING,
     ST_SLEWING,
@@ -54,21 +56,21 @@ typedef enum { PMC8_TRACK_SIDEREAL, PMC8_TRACK_LUNAR, PMC8_TRACK_SOLAR, PMC8_TRA
 
 //typedef enum { HEMI_SOUTH, HEMI_NORTH } PMC8_HEMISPHERE;
 
-typedef enum { PMC8_AXIS_RA=0, PMC8_AXIS_DEC=1 } PMC8_AXIS;
+typedef enum { PMC8_AXIS_RA = 0, PMC8_AXIS_DEC = 1 } PMC8_AXIS;
 typedef enum { PMC8_N, PMC8_S, PMC8_W, PMC8_E } PMC8_DIRECTION;
 
 typedef enum { MOUNT_G11 = 0, MOUNT_EXOS2 = 1, MOUNT_iEXOS100 = 2 } PMC8_MOUNT_TYPES;
 
 typedef enum { PMC8_SERIAL_AUTO, PMC8_SERIAL_INVERTED, PMC8_SERIAL_STANDARD, PMC8_ETHERNET } PMC8_CONNECTION_TYPE;
 
-typedef struct
+typedef struct PMC8Info
 {
     PMC8_SYSTEM_STATUS systemStatus;
     PMC8_SYSTEM_STATUS rememberSystemStatus;
-//    PMC8_HEMISPHERE hemisphere;
+    //    PMC8_HEMISPHERE hemisphere;
 } PMC8Info;
 
-typedef struct
+typedef struct FirmwareInfo
 {
     std::string Model;
     std::string MainBoardFirmware;
@@ -111,13 +113,14 @@ bool get_pmc8_reconnect_flag();
 **************************************************************************/
 /** Get PMC8 current status info */
 bool get_pmc8_status(int fd, PMC8Info *info);
-/** Get All firmware informatin in addition to mount model */
+/** Get All firmware information in addition to mount model */
 bool get_pmc8_firmware(int fd, FirmwareInfo *info);
 /** Get RA/DEC */
 bool get_pmc8_coords(int fd, double &ra, double &dec);
 bool get_pmc8_move_rate_axis(int fd, PMC8_AXIS axis, double &rate);
 bool get_pmc8_track_rate(int fd, double &rate);
 bool get_pmc8_tracking_data(int fd, double &rate, uint8_t &mode);
+uint8_t get_pmc8_tracking_mode_from_rate(double rate);
 
 /**************************************************************************
  Motion
@@ -135,6 +138,7 @@ bool get_pmc8_is_scope_slewing(int fd, bool &isslew);
 bool get_pmc8_direction_axis(int fd, PMC8_AXIS axis, int &dir);
 bool set_pmc8_direction_axis(int fd, PMC8_AXIS axis, int dir, bool fast);
 bool abort_pmc8(int fd);
+bool abort_pmc8_goto(int fd);
 bool slew_pmc8(int fd, double ra, double dec);
 bool sync_pmc8(int fd, double ra, double dec);
 bool set_pmc8_radec(int fd, double ra, double dec);

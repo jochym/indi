@@ -37,6 +37,8 @@
 #include <mutex>
 #include <thread>
 #include <stream/streammanager.h>
+#include <connectionplugins/connectionserial.h>
+#include <connectionplugins/connectiontcp.h>
 
 //JM 2019-01-17: Disabled until further notice
 //#define WITH_EXPOSURE_LOOPING
@@ -73,12 +75,12 @@ class SensorInterface : public DefaultDevice
     public:
         enum
         {
-            SENSOR_CAN_ABORT                  = 1<<0,  /*!< Can the Sensor Integration be aborted?  */
-            SENSOR_HAS_STREAMING              = 1<<1,  /*!< Does the Sensor supports streaming?  */
-            SENSOR_HAS_SHUTTER                = 1<<2,  /*!< Does the Sensor have a mechanical shutter?  */
-            SENSOR_HAS_COOLER                 = 1<<3,  /*!< Does the Sensor have a cooler and temperature control?  */
-            SENSOR_HAS_DSP                    = 1<<4,
-            SENSOR_MAX_CAPABILITY             = 1<<5,  /*!< Does the Sensor have a cooler and temperature control?  */
+            SENSOR_CAN_ABORT                  = 1 << 0, /*!< Can the Sensor Integration be aborted?  */
+            SENSOR_HAS_STREAMING              = 1 << 1, /*!< Does the Sensor supports streaming?  */
+            SENSOR_HAS_SHUTTER                = 1 << 2, /*!< Does the Sensor have a mechanical shutter?  */
+            SENSOR_HAS_COOLER                 = 1 << 3, /*!< Does the Sensor have a cooler and temperature control?  */
+            SENSOR_HAS_DSP                    = 1 << 4,
+            SENSOR_MAX_CAPABILITY             = 1 << 5, /*!< Does the Sensor have a cooler and temperature control?  */
         } SensorCapability;
 
         SensorInterface();
@@ -180,8 +182,8 @@ class SensorInterface : public DefaultDevice
          * @param sendToClient If true (default), the element limits are updated and is sent to the
          * client. If false, the element limits are updated without getting sent to the client.
          */
-        void setMinMaxStep(const char *property, const char *element, double min, double max, double step,
-                           bool sendToClient = true);
+        virtual void setMinMaxStep(const char *property, const char *element, double min, double max, double step,
+                                   bool sendToClient = true);
 
         /**
          * @brief setBufferSize Set desired buffer size. The function will allocate memory
@@ -231,7 +233,7 @@ class SensorInterface : public DefaultDevice
         void setNAxis(int value);
 
         /**
-         * @brief setIntegrationExtension Set integration exntension
+         * @brief setIntegrationExtension Set integration extension
          * @param ext extension (fits, jpeg, raw..etc)
          */
         void setIntegrationFileExtension(const char *ext);
@@ -269,6 +271,7 @@ class SensorInterface : public DefaultDevice
         /// Misc.
         /////////////////////////////////////////////////////////////////////////////
         friend class StreamManager;
+        friend class StreamManagerPrivate;
         /**
          * @brief StartStreaming Start live video streaming
          * @return True if successful, false otherwise.
@@ -290,7 +293,7 @@ class SensorInterface : public DefaultDevice
         virtual bool StartIntegration(double duration);
 
         /**
-         * \brief Uploads target Device exposed buffer as FITS to the client. Dervied classes should class
+         * \brief Uploads target Device exposed buffer as FITS to the client. Derived classes should class
          * this function when an Integration is complete.
          * @param targetDevice device that contains upload integration data
          * \note This function is not implemented in Sensor, it must be implemented in the child class
@@ -310,13 +313,16 @@ class SensorInterface : public DefaultDevice
         /**
          * @return Get current Sensor connection mode
          */
-        inline uint8_t getSensorConnection() { return sensorConnection; }
+        inline uint8_t getSensorConnection()
+        {
+            return sensorConnection;
+        }
 
         /**
          * \brief Add FITS keywords to a fits file
          * \param fptr pointer to a valid FITS file.
          * \param buf The buffer of the fits contents.
-         * \param len The lenght of the buffer.
+         * \param len The length of the buffer.
          * \note In additional to the standard FITS keywords, this function write the following
          * keywords the FITS file:
          * <ul>
@@ -335,7 +341,26 @@ class SensorInterface : public DefaultDevice
         /** A function to just remove GCC warnings about deprecated conversion */
         void fits_update_key_s(fitsfile *fptr, int type, std::string name, void *p, std::string explanation, int *status);
 
-protected:
+        /** Return the connection file descriptor */
+        int getPortFD()
+        {
+            return PortFD;
+        }
+
+        /** Export the serial connection object */
+        Connection::Serial *getSerialConnection()
+        {
+            return serialConnection;
+        }
+
+        /** Export the TCP connection object */
+        Connection::TCP *getTcpConnection()
+        {
+            return tcpConnection;
+        }
+
+
+    protected:
 
         /**
          * @return True if Sensor has mechanical or electronic shutter. False otherwise.
@@ -403,7 +428,7 @@ protected:
         }
 
         /**
-         * @brief SetCapability Set the Sensor capabilities. Al fields must be initilized.
+         * @brief SetCapability Set the Sensor capabilities. Al fields must be initialized.
          * @param cap pointer to SensorCapability struct.
          */
         void SetCapability(uint32_t cap);
@@ -507,16 +532,13 @@ protected:
 
         std::unique_ptr<StreamManager> Streamer;
         std::unique_ptr<DSP::Manager> DSP;
-
-
-
         Connection::Serial *serialConnection = NULL;
         Connection::TCP *tcpConnection       = NULL;
 
         /// For Serial & TCP connections
         int PortFD = -1;
 
-      private:
+    private:
         bool callHandshake();
         uint8_t sensorConnection = CONNECTION_NONE;
 

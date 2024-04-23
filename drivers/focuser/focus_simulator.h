@@ -19,6 +19,7 @@
 #pragma once
 
 #include "indifocuser.h"
+#include "indipropertynumber.h"
 
 /**
  * @brief The FocusSim class provides a simple Focuser simulator that can simulator the following devices:
@@ -33,57 +34,58 @@
  */
 class FocusSim : public INDI::Focuser
 {
-    public:
-        FocusSim();
-        virtual ~FocusSim() override = default;
+public:
+    FocusSim();
+    virtual ~FocusSim() override = default;
 
-        const char *getDefaultName() override;
+    const char *getDefaultName() override;
 
-        void ISGetProperties(const char *dev) override;
-        virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
-        virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
+    void ISGetProperties(const char *dev) override;
+    virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
+    virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
 
-    protected:
+protected:
 
-        bool initProperties() override;
-        bool updateProperties() override;
+    bool initProperties() override;
+    bool updateProperties() override;
 
-        bool Connect() override;
-        bool Disconnect() override;
+    bool Connect() override;
+    bool Disconnect() override;
 
-        virtual IPState MoveFocuser(FocusDirection dir, int speed, uint16_t duration) override;
-        virtual IPState MoveAbsFocuser(uint32_t targetTicks) override;
-        virtual IPState MoveRelFocuser(FocusDirection dir, uint32_t ticks) override;
-        virtual bool SetFocuserSpeed(int speed) override;
+    virtual IPState MoveFocuser(FocusDirection dir, int speed, uint16_t duration) override;
+    virtual IPState MoveAbsFocuser(uint32_t targetTicks) override;
+    virtual IPState MoveRelFocuser(FocusDirection dir, uint32_t ticks) override;
+    virtual bool SetFocuserSpeed(int speed) override;
 
-        virtual bool SetFocuserBacklash(int32_t steps) override;
-        virtual bool SetFocuserBacklashEnabled(bool enabled) override;
+    virtual bool SetFocuserBacklash(int32_t steps) override;
+    virtual bool SetFocuserBacklashEnabled(bool enabled) override;
 
-    private:
-        double internalTicks { 0 };
-        double initTicks { 0 };
+    virtual bool saveConfigItems(FILE *fp) override;
 
-        // Seeing in arcseconds
-        INumberVectorProperty SeeingNP;
-        INumber SeeingN[1];
+private:
+    double internalTicks { 0 };
+    double initTicks { 0 };
 
-        // FWHM to be used by CCD driver to draw 'fuzzy' stars
-        INumberVectorProperty FWHMNP;
-        INumber FWHMN[1];
+    // Seeing in arcseconds
+    INDI::PropertyNumber SeeingNP {1};
 
-        // Temperature in celcius degrees
-        INumberVectorProperty TemperatureNP;
-        INumber TemperatureN[1];
+    // FWHM to be used by CCD driver to draw 'fuzzy' stars
+    INDI::PropertyNumber FWHMNP {1};
 
-        // Current mode of Focus simulator for testing purposes
-        enum
-        {
-            MODE_ALL,
-            MODE_ABSOLUTE,
-            MODE_RELATIVE,
-            MODE_TIMER,
-            MODE_COUNT
-        };
-        ISwitchVectorProperty ModeSP;
-        ISwitch ModeS[MODE_COUNT];
+    // Temperature in celcius degrees
+    INDI::PropertyNumber TemperatureNP {1};
+
+    INDI::PropertyNumber DelayNP {1};
+
+    // Current mode of Focus simulator for testing purposes
+    enum
+    {
+        MODE_ALL,
+        MODE_ABSOLUTE,
+        MODE_RELATIVE,
+        MODE_TIMER,
+        MODE_COUNT
+    };
+    INDI::PropertySwitch ModeSP {4};
+    //        ISwitch ModeS[MODE_COUNT];
 };

@@ -42,17 +42,15 @@ GuideSim::GuideSim()
     streamPredicate = 0;
     terminateThread = false;
 
-    primaryFocalLength = 900; //  focal length of the telescope in millimeters
-    guiderFocalLength  = 300;
-
     time(&RunStart);
 }
 
 bool GuideSim::SetupParms()
 {
     int nbuf;
-    SetCCDParams(SimulatorSettingsN[0].value, SimulatorSettingsN[1].value, 16, SimulatorSettingsN[2].value,
-                 SimulatorSettingsN[3].value);
+    SetCCDParams(SimulatorSettingsNP[SIM_XRES].getValue(), SimulatorSettingsNP[SIM_YRES].getValue(), 16,
+                 SimulatorSettingsNP[SIM_XSIZE].getValue(),
+                 SimulatorSettingsNP[SIM_YSIZE].getValue());
 
     if (HasCooler())
     {
@@ -61,20 +59,21 @@ bool GuideSim::SetupParms()
     }
 
     //  Kwiq
-    maxnoise      = SimulatorSettingsN[8].value;
-    skyglow       = SimulatorSettingsN[9].value;
-    maxval        = SimulatorSettingsN[4].value;
-    bias          = SimulatorSettingsN[5].value;
-    limitingmag   = SimulatorSettingsN[7].value;
-    saturationmag = SimulatorSettingsN[6].value;
-    OAGoffset = SimulatorSettingsN[10].value; //  An oag is offset this much from center of scope position (arcminutes);
-    polarError = SimulatorSettingsN[11].value;
-    polarDrift = SimulatorSettingsN[12].value;
-    rotationCW = SimulatorSettingsN[13].value;
+    maxnoise      = SimulatorSettingsNP[SIM_NOISE].getValue();
+    skyglow       = SimulatorSettingsNP[SIM_SKYGLOW].getValue();
+    maxval        = SimulatorSettingsNP[SIM_MAXVAL].getValue();
+    bias          = SimulatorSettingsNP[SIM_BIAS].getValue();
+    limitingmag   = SimulatorSettingsNP[SIM_BIAS].getValue();
+    saturationmag = SimulatorSettingsNP[SIM_SATURATION].getValue();
+    OAGoffset =
+        SimulatorSettingsNP[SIM_OAGOFFSET].getValue(); //  An oag is offset this much from center of scope position (arcminutes);
+    polarError = SimulatorSettingsNP[SIM_POLAR].getValue();
+    polarDrift = SimulatorSettingsNP[SIM_POLARDRIFT].getValue();
+    rotationCW = SimulatorSettingsNP[SIM_ROTATION].getValue();
     //  Kwiq++
-    king_gamma = SimulatorSettingsN[14].value * 0.0174532925;
-    king_theta = SimulatorSettingsN[15].value * 0.0174532925;
-    TimeFactor = SimulatorSettingsN[16].value;
+    king_gamma = SimulatorSettingsNP[SIM_KING_GAMMA].getValue() * 0.0174532925;
+    king_theta = SimulatorSettingsNP[SIM_KING_THETA].getValue() * 0.0174532925;
+    TimeFactor = SimulatorSettingsNP[SIM_TIME_FACTOR].getValue();
 
     nbuf = PrimaryCCD.getXRes() * PrimaryCCD.getYRes() * PrimaryCCD.getBPP() / 8;
     //nbuf += 512;
@@ -117,59 +116,61 @@ bool GuideSim::initProperties()
     //  but the simulators are a special case
     INDI::CCD::initProperties();
 
-    IUFillNumber(&SimulatorSettingsN[0], "SIM_XRES", "CCD X resolution", "%4.0f", 0, 8192, 0, 1280);
-    IUFillNumber(&SimulatorSettingsN[1], "SIM_YRES", "CCD Y resolution", "%4.0f", 0, 8192, 0, 1024);
-    IUFillNumber(&SimulatorSettingsN[2], "SIM_XSIZE", "CCD X Pixel Size", "%4.2f", 0, 60, 0, 5.2);
-    IUFillNumber(&SimulatorSettingsN[3], "SIM_YSIZE", "CCD Y Pixel Size", "%4.2f", 0, 60, 0, 5.2);
-    IUFillNumber(&SimulatorSettingsN[4], "SIM_MAXVAL", "CCD Maximum ADU", "%4.0f", 0, 65000, 0, 65000);
-    IUFillNumber(&SimulatorSettingsN[5], "SIM_BIAS", "CCD Bias", "%4.0f", 0, 6000, 0, 10);
-    IUFillNumber(&SimulatorSettingsN[6], "SIM_SATURATION", "Saturation Mag", "%4.1f", 0, 20, 0, 1.0);
-    IUFillNumber(&SimulatorSettingsN[7], "SIM_LIMITINGMAG", "Limiting Mag", "%4.1f", 0, 20, 0, 17.0);
-    IUFillNumber(&SimulatorSettingsN[8], "SIM_NOISE", "CCD Noise", "%4.0f", 0, 6000, 0, 10);
-    IUFillNumber(&SimulatorSettingsN[9], "SIM_SKYGLOW", "Sky Glow (magnitudes)", "%4.1f", 0, 6000, 0, 19.5);
-    IUFillNumber(&SimulatorSettingsN[10], "SIM_OAGOFFSET", "Oag Offset (arcminutes)", "%4.1f", 0, 6000, 0, 0);
-    IUFillNumber(&SimulatorSettingsN[11], "SIM_POLAR", "PAE (arcminutes)", "%4.1f", -600, 600, 0,
-                 0); /* PAE = Polar Alignment Error */
-    IUFillNumber(&SimulatorSettingsN[12], "SIM_POLARDRIFT", "PAE Drift (minutes)", "%4.1f", 0, 6000, 0, 0);
-    IUFillNumber(&SimulatorSettingsN[13], "SIM_ROTATION", "Rotation CW (degrees)", "%4.1f", -360, 360, 0, 0);
-    IUFillNumber(&SimulatorSettingsN[14], "SIM_KING_GAMMA", "(CP,TCP), deg", "%4.1f", 0, 10, 0, 0);
-    IUFillNumber(&SimulatorSettingsN[15], "SIM_KING_THETA", "hour hangle, deg", "%4.1f", 0, 360, 0, 0);
-    IUFillNumber(&SimulatorSettingsN[16], "SIM_TIME_FACTOR", "Time Factor (x)", "%.2f", 0.01, 100, 0, 1);
+    CaptureFormat format = {"INDI_MONO", "Mono", 16, true};
+    addCaptureFormat(format);
 
-    IUFillNumberVector(&SimulatorSettingsNP, SimulatorSettingsN, 17, getDeviceName(), "SIMULATOR_SETTINGS",
-                       "Simulator Settings", "Simulator Config", IP_RW, 60, IPS_IDLE);
+    SimulatorSettingsNP[SIM_XRES].fill("SIM_XRES", "CCD X resolution", "%4.0f", 0, 8192, 0, 1280);
+    SimulatorSettingsNP[SIM_YRES].fill("SIM_YRES", "CCD Y resolution", "%4.0f", 0, 8192, 0, 1024);
+    SimulatorSettingsNP[SIM_XSIZE].fill("SIM_XSIZE", "CCD X Pixel Size", "%4.2f", 0, 60, 0, 2.4);
+    SimulatorSettingsNP[SIM_YSIZE].fill("SIM_YSIZE", "CCD Y Pixel Size", "%4.2f", 0, 60, 0, 2.4);
+    SimulatorSettingsNP[SIM_MAXVAL].fill("SIM_MAXVAL", "CCD Maximum ADU", "%4.0f", 0, 65000, 0, 65000);
+    SimulatorSettingsNP[SIM_BIAS].fill("SIM_BIAS", "CCD Bias", "%4.0f", 0, 6000, 0, 10);
+    SimulatorSettingsNP[SIM_SATURATION].fill("SIM_SATURATION", "Saturation Mag", "%4.1f", 0, 20, 0, 1.0);
+    SimulatorSettingsNP[SIM_LIMITINGMAG].fill("SIM_LIMITINGMAG", "Limiting Mag", "%4.1f", 0, 20, 0, 17.0);
+    SimulatorSettingsNP[SIM_NOISE].fill("SIM_NOISE", "CCD Noise", "%4.0f", 0, 6000, 0, 10);
+    SimulatorSettingsNP[SIM_SKYGLOW].fill("SIM_SKYGLOW", "Sky Glow (magnitudes)", "%4.1f", 0, 6000, 0, 19.5);
+    SimulatorSettingsNP[SIM_OAGOFFSET].fill("SIM_OAGOFFSET", "Oag Offset (arcminutes)", "%4.1f", 0, 6000, 0, 0);
+    SimulatorSettingsNP[SIM_POLAR].fill("SIM_POLAR", "PAE (arcminutes)", "%4.1f", -600, 600, 0,
+                                        0); /* PAE = Polar Alignment Error */
+    SimulatorSettingsNP[SIM_POLARDRIFT].fill("SIM_POLARDRIFT", "PAE Drift (minutes)", "%4.1f", 0, 6000, 0, 0);
+    SimulatorSettingsNP[SIM_ROTATION].fill("SIM_ROTATION", "Rotation CW (degrees)", "%4.1f", -360, 360, 0, 0);
+    SimulatorSettingsNP[SIM_KING_GAMMA].fill("SIM_KING_GAMMA", "(CP,TCP), deg", "%4.1f", 0, 10, 0, 0);
+    SimulatorSettingsNP[SIM_KING_THETA].fill("SIM_KING_THETA", "hour hangle, deg", "%4.1f", 0, 360, 0, 0);
+    SimulatorSettingsNP[SIM_TIME_FACTOR].fill("SIM_TIME_FACTOR", "Time Factor (x)", "%.2f", 0.01, 100, 0, 1);
+
+    SimulatorSettingsNP.fill(getDeviceName(), "SIMULATOR_SETTINGS",
+                             "Config", SIMULATOR_TAB, IP_RW, 60, IPS_IDLE);
 
     // RGB Simulation
-    IUFillSwitch(&SimulateRgbS[0], "SIMULATE_YES", "Yes", ISS_OFF);
-    IUFillSwitch(&SimulateRgbS[1], "SIMULATE_NO", "No", ISS_ON);
-    IUFillSwitchVector(&SimulateRgbSP, SimulateRgbS, 2, getDeviceName(), "SIMULATE_RGB", "Simulate RGB",
-                       "Simulator Config", IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+    SimulateRgbSP[SIMULATE_YES].fill("SIMULATE_YES", "Yes", ISS_OFF);
+    SimulateRgbSP[SIMULATE_NO].fill("SIMULATE_NO", "No", ISS_ON);
+    SimulateRgbSP.fill(getDeviceName(), "SIMULATE_RGB", "Simulate RGB",
+                       SIMULATOR_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
-    IUFillNumber(&FWHMN[0], "SIM_FWHM", "FWHM (arcseconds)", "%4.2f", 0, 60, 0, 7.5);
-    IUFillNumberVector(&FWHMNP, FWHMN, 1, ActiveDeviceT[ACTIVE_FOCUSER].text, "FWHM", "FWHM", OPTIONS_TAB, IP_RO, 60, IPS_IDLE);
-
-    IUFillSwitch(&CoolerS[0], "COOLER_ON", "ON", ISS_OFF);
-    IUFillSwitch(&CoolerS[1], "COOLER_OFF", "OFF", ISS_ON);
-    IUFillSwitchVector(&CoolerSP, CoolerS, 2, getDeviceName(), "CCD_COOLER", "Cooler", MAIN_CONTROL_TAB, IP_WO,
-                       ISR_1OFMANY, 0, IPS_IDLE);
+    CoolerSP[COOLER_ON].fill("COOLER_ON", "ON", ISS_OFF);
+    CoolerSP[COOLER_OFF].fill("COOLER_OFF", "OFF", ISS_ON);
+    CoolerSP.fill(getDeviceName(), "CCD_COOLER", "Cooler", MAIN_CONTROL_TAB, IP_WO,
+                  ISR_1OFMANY, 0, IPS_IDLE);
 
     // CCD Gain
-    IUFillNumber(&GainN[0], "GAIN", "Gain", "%.f", 0, 100, 10, 50);
-    IUFillNumberVector(&GainNP, GainN, 1, getDeviceName(), "CCD_GAIN", "Gain", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
+    GainNP[0].fill("GAIN", "Gain", "%.f", 0, 100, 10, 50);
+    GainNP.fill(getDeviceName(), "CCD_GAIN", "Gain", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
-    IUFillNumber(&EqPEN[0], "RA_PE", "RA (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
-    IUFillNumber(&EqPEN[1], "DEC_PE", "DEC (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
-    IUFillNumberVector(&EqPENP, EqPEN, 2, getDeviceName(), "EQUATORIAL_PE", "EQ PE", "Simulator Config", IP_RW, 60,
-                       IPS_IDLE);
+    EqPENP[RA_PE].fill("RA_PE", "RA (hh:mm:ss)", "%010.6m", 0, 24, 0, 0);
+    EqPENP[DEC_PE].fill("DEC_PE", "DEC (dd:mm:ss)", "%010.6m", -90, 90, 0, 0);
+    EqPENP.fill(getDeviceName(), "EQUATORIAL_PE", "EQ PE", SIMULATOR_TAB, IP_RW, 60,
+                IPS_IDLE);
+
+    // Timeout
+    ToggleTimeoutSP[INDI_ENABLED].fill("INDI_ENABLED", "Enabled", ISS_OFF);
+    ToggleTimeoutSP[INDI_DISABLED].fill("INDI_DISABLED", "Disabled", ISS_ON);
+    ToggleTimeoutSP.fill(getDeviceName(), "CCD_TIMEOUT", "Timeout", SIMULATOR_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
 #ifdef USE_EQUATORIAL_PE
-    IDSnoopDevice(ActiveDeviceT[0].text, "EQUATORIAL_PE");
+    IDSnoopDevice(ActiveDeviceTP[0].getText(), "EQUATORIAL_PE");
 #else
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_TELESCOPE].text, "EQUATORIAL_EOD_COORD");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_TELESCOPE].getText(), "EQUATORIAL_EOD_COORD");
 #endif
-
-
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_FOCUSER].text, "FWHM");
 
     uint32_t cap = 0;
 
@@ -194,10 +195,6 @@ bool GuideSim::initProperties()
 
     setDriverInterface(getDriverInterface());
 
-    // Make Guide Scope ON by default
-    TelescopeTypeS[TELESCOPE_PRIMARY].s = ISS_OFF;
-    TelescopeTypeS[TELESCOPE_GUIDE].s = ISS_ON;
-
     return true;
 }
 
@@ -220,9 +217,10 @@ void GuideSim::ISGetProperties(const char * dev)
 {
     INDI::CCD::ISGetProperties(dev);
 
-    defineProperty(&SimulatorSettingsNP);
-    defineProperty(&EqPENP);
-    defineProperty(&SimulateRgbSP);
+    defineProperty(SimulatorSettingsNP);
+    defineProperty(EqPENP);
+    defineProperty(SimulateRgbSP);
+    defineProperty(ToggleTimeoutSP);
 }
 
 bool GuideSim::updateProperties()
@@ -232,9 +230,9 @@ bool GuideSim::updateProperties()
     if (isConnected())
     {
         if (HasCooler())
-            defineProperty(&CoolerSP);
+            defineProperty(CoolerSP);
 
-        defineProperty(&GainNP);
+        defineProperty(GainNP);
 
         SetupParms();
 
@@ -243,14 +241,13 @@ bool GuideSim::updateProperties()
             SetGuiderParams(500, 290, 16, 9.8, 12.6);
             GuideCCD.setFrameBufferSize(GuideCCD.getXRes() * GuideCCD.getYRes() * 2);
         }
-
     }
     else
     {
         if (HasCooler())
-            deleteProperty(CoolerSP.name);
+            deleteProperty(CoolerSP);
 
-        deleteProperty(GainNP.name);
+        deleteProperty(GainNP);
     }
 
     return true;
@@ -265,21 +262,15 @@ int GuideSim::SetTemperature(double temperature)
         return 1;
     }
 
-    CoolerS[0].s = ISS_ON;
-    CoolerS[1].s = ISS_OFF;
-    CoolerSP.s   = IPS_BUSY;
-    IDSetSwitch(&CoolerSP, nullptr);
+    CoolerSP[COOLER_ON].setState(ISS_ON);
+    CoolerSP[COOLER_OFF].setState(ISS_OFF);
+    CoolerSP.setState(IPS_BUSY);
+    CoolerSP.apply();
     return 0;
 }
 
 bool GuideSim::StartExposure(float duration)
 {
-    if (std::isnan(RA) && std::isnan(Dec))
-    {
-        LOG_ERROR("Telescope coordinates missing. Make sure telescope is connected and its name is set in CCD Options.");
-        return false;
-    }
-
     //  for the simulator, we can just draw the frame now
     //  and it will get returned at the right time
     //  by the timer routines
@@ -297,17 +288,6 @@ bool GuideSim::StartExposure(float duration)
     return true;
 }
 
-bool GuideSim::StartGuideExposure(float n)
-{
-    GuideExposureRequest = n;
-    AbortGuideFrame      = false;
-    GuideCCD.setExposureDuration(n);
-    DrawCcdFrame(&GuideCCD);
-    gettimeofday(&GuideExpStart, nullptr);
-    InGuideExposure = true;
-    return true;
-}
-
 bool GuideSim::AbortExposure()
 {
     if (!InExposure)
@@ -315,15 +295,6 @@ bool GuideSim::AbortExposure()
 
     AbortPrimaryFrame = true;
 
-    return true;
-}
-
-bool GuideSim::AbortGuideExposure()
-{
-    //IDLog("Enter AbortGuideExposure\n");
-    if (!InGuideExposure)
-        return true; //  no need to abort if we aren't doing one
-    AbortGuideFrame = true;
     return true;
 }
 
@@ -352,7 +323,7 @@ void GuideSim::TimerHit()
     if (!isConnected())
         return;
 
-    if (InExposure)
+    if (InExposure && ToggleTimeoutSP.findOnSwitchIndex() == INDI_DISABLED)
     {
         if (AbortPrimaryFrame)
         {
@@ -364,7 +335,7 @@ void GuideSim::TimerHit()
             float timeleft;
             timeleft = CalcTimeLeft(ExpStart, ExposureRequest);
 
-            //IDLog("CCD Exposure left: %g - Requset: %g\n", timeleft, ExposureRequest);
+            //IDLog("CCD Exposure left: %g - Request: %g\n", timeleft, ExposureRequest);
             if (timeleft < 0)
                 timeleft = 0;
 
@@ -387,52 +358,6 @@ void GuideSim::TimerHit()
         }
     }
 
-    if (InGuideExposure)
-    {
-        float timeleft;
-        timeleft = CalcTimeLeft(GuideExpStart, GuideExposureRequest);
-
-        //IDLog("GUIDE Exposure left: %g - Requset: %g\n", timeleft, GuideExposureRequest);
-
-        if (timeleft < 0)
-            timeleft = 0;
-
-        //ImageExposureN[0].value = timeleft;
-        //IDSetNumber(ImageExposureNP, nullptr);
-        GuideCCD.setExposureLeft(timeleft);
-
-        if (timeleft < 1.0)
-        {
-            if (timeleft <= 0.001)
-            {
-                InGuideExposure = false;
-                if (!AbortGuideFrame)
-                {
-                    GuideCCD.binFrame();
-                    ExposureComplete(&GuideCCD);
-                    if (InGuideExposure)
-                    {
-                        //  the call to complete triggered another exposure
-                        timeleft = CalcTimeLeft(GuideExpStart, GuideExposureRequest);
-                        if (timeleft < 1.0)
-                        {
-                            nextTimer = timeleft * 1000;
-                        }
-                    }
-                }
-                else
-                {
-                    //IDLog("Not sending guide frame cuz of abort\n");
-                }
-                AbortGuideFrame = false;
-            }
-            else
-            {
-                nextTimer = timeleft * 1000; //  set a shorter timer
-            }
-        }
-    }
-
     if (TemperatureNP.s == IPS_BUSY)
     {
         if (TemperatureRequest < TemperatureN[0].value)
@@ -446,10 +371,10 @@ void GuideSim::TimerHit()
         // Above 20, cooler is off
         if (TemperatureN[0].value >= 20)
         {
-            CoolerS[0].s = ISS_OFF;
-            CoolerS[0].s = ISS_ON;
-            CoolerSP.s   = IPS_IDLE;
-            IDSetSwitch(&CoolerSP, nullptr);
+            CoolerSP[COOLER_ON].setState(ISS_OFF);
+            CoolerSP[COOLER_OFF].setState(ISS_ON);
+            CoolerSP.setState(IPS_IDLE);
+            CoolerSP.apply();
         }
     }
 
@@ -461,26 +386,18 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 {
     //  CCD frame is 16 bit data
     double exposure_time;
-    double targetFocalLength;
 
     uint16_t * ptr = reinterpret_cast<uint16_t *>(targetChip->getFrameBuffer());
 
-    if (targetChip->getXRes() == 500)
-        exposure_time = GuideExposureRequest * 4;
-    else if (Streamer->isStreaming())
+    if (Streamer->isStreaming())
         exposure_time = (ExposureRequest < 1) ? (ExposureRequest * 100) : ExposureRequest * 2;
     else
         exposure_time = ExposureRequest;
 
-    if (GainN[0].value > 50)
-        exposure_time *= sqrt(GainN[0].value - 50);
-    else if (GainN[0].value < 50)
-        exposure_time /= sqrt(50 - GainN[0].value);
+    exposure_time *= (1 + sqrt(GainNP[0].getValue()));
 
-    if (TelescopeTypeS[TELESCOPE_PRIMARY].s == ISS_ON)
-        targetFocalLength = primaryFocalLength;
-    else
-        targetFocalLength = guiderFocalLength;
+    auto targetFocalLength = ScopeInfoNP[FOCAL_LENGTH].getValue() > 0 ? ScopeInfoNP[FOCAL_LENGTH].getValue() :
+                             snoopedFocalLength;
 
     if (ShowStarField)
     {
@@ -504,7 +421,6 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
         PESpot = PESpot * 2.0 * 3.14159;
 
         PEOffset = PEMax * std::sin(PESpot);
-        //fprintf(stderr,"PEOffset = %4.2f arcseconds timesince %4.2f\n",PEOffset,timesince);
         PEOffset = PEOffset / 3600; //  convert to degrees
         //PeOffset=PeOffset/15;       //  ra is in h:mm
 
@@ -574,6 +490,12 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
             currentRA  = RA;
             currentDE = Dec;
 
+            if (std::isnan(currentRA))
+            {
+                currentRA = 0;
+                currentDE = 0;
+            }
+
             INDI::IEquatorialCoordinates epochPos { currentRA, currentDE }, J2000Pos { 0, 0 };
             // Convert from JNow to J2000
             INDI::ObservedToJ2000(&epochPos, ln_get_julian_from_sys(), &J2000Pos);
@@ -586,7 +508,7 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 #endif
 
         //  calc this now, we will use it a lot later
-        rad = currentRA * 15.0;
+        rad = currentRA * 15.0  + PEOffset;
         rar = rad * 0.0174532925;
         //  offsetting the dec by the guide head offset
         float cameradec;
@@ -598,7 +520,6 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
         // Add declination drift, if any.
         decr += decDrift / 3600.0 * 0.0174532925;
 
-        //fprintf(stderr,"decPE %7.5f  cameradec %7.5f  CenterOffsetDec %4.4f\n",decPE,cameradec,decr);
         //  now lets calculate the radius we need to fetch
         float radius;
 
@@ -729,7 +650,7 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
             int drawn = 0;
 
             sprintf(gsccmd, "gsc -c %8.6f %+8.6f -r %4.1f -m 0 %4.2f -n 3000",
-                    range360(rad + PEOffset),
+                    range360(rad),
                     rangeDec(cameradec),
                     radius,
                     lookuplimit);
@@ -746,7 +667,7 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 
                 while (fgets(line, 256, pp) != nullptr)
                 {
-                    //  ok, lets parse this line for specifcs we want
+                    //  ok, lets parse this line for specifics we want
                     char id[20];
                     char plate[6];
                     char ob[6];
@@ -762,13 +683,11 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
 
                     int rc = sscanf(line, "%10s %f %f %f %f %f %d %d %4s %2s %f %d", id, &ra, &dec, &pose, &mag, &mage,
                                     &band, &c, plate, ob, &dist, &dir);
-                    //fprintf(stderr,"Parsed %d items\n",rc);
                     if (rc == 12)
                     {
                         lines++;
                         //if(c==0) {
                         stars++;
-                        //fprintf(stderr,"%s %8.4f %8.4f %5.2f %5.2f %d\n",id,ra,dec,mag,dist,dir);
 
                         //  Convert the ra/dec to standard co-ordinates
                         double sx;    //  standard co-ords
@@ -777,9 +696,6 @@ int GuideSim::DrawCcdFrame(INDI::CCDChip * targetChip)
                         double sdecr; //  star dec in radians;
                         double ccdx;
                         double ccdy;
-
-                        //fprintf(stderr,"line %s",line);
-                        //fprintf(stderr,"parsed %6.5f %6.5f\n",ra,dec);
 
                         srar  = ra * 0.0174532925;
                         sdecr = dec * 0.0174532925;
@@ -1088,54 +1004,54 @@ bool GuideSim::ISNewNumber(const char * dev, const char * name, double values[],
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
 
-        if (!strcmp(name, GainNP.name))
+        if (GainNP.isNameMatch(name))
         {
-            IUUpdateNumber(&GainNP, values, names, n);
-            GainNP.s = IPS_OK;
-            IDSetNumber(&GainNP, nullptr);
+            GainNP.update(values, names, n);
+            GainNP.setState(IPS_OK);
+            GainNP.apply();
             return true;
         }
 
         if (strcmp(name, "SIMULATOR_SETTINGS") == 0)
         {
-            IUUpdateNumber(&SimulatorSettingsNP, values, names, n);
-            SimulatorSettingsNP.s = IPS_OK;
+            SimulatorSettingsNP.update(values, names, n);
+            SimulatorSettingsNP.setState(IPS_OK);
 
             //  Reset our parameters now
             SetupParms();
-            IDSetNumber(&SimulatorSettingsNP, nullptr);
+            SimulatorSettingsNP.apply();
 
-            maxnoise      = SimulatorSettingsN[8].value;
-            skyglow       = SimulatorSettingsN[9].value;
-            maxval        = SimulatorSettingsN[4].value;
-            bias          = SimulatorSettingsN[5].value;
-            limitingmag   = SimulatorSettingsN[7].value;
-            saturationmag = SimulatorSettingsN[6].value;
-            OAGoffset = SimulatorSettingsN[10].value;
-            polarError = SimulatorSettingsN[11].value;
-            polarDrift = SimulatorSettingsN[12].value;
-            rotationCW = SimulatorSettingsN[13].value;
+            maxnoise      = SimulatorSettingsNP[SIM_NOISE].getValue();
+            skyglow       = SimulatorSettingsNP[SIM_SKYGLOW].getValue();
+            maxval        = SimulatorSettingsNP[SIM_MAXVAL].getValue();
+            bias          = SimulatorSettingsNP[SIM_BIAS].getValue();
+            limitingmag   = SimulatorSettingsNP[SIM_LIMITINGMAG].getValue();
+            saturationmag = SimulatorSettingsNP[SIM_SATURATION].getValue();
+            OAGoffset = SimulatorSettingsNP[SIM_OAGOFFSET].getValue();
+            polarError = SimulatorSettingsNP[SIM_POLAR].getValue();
+            polarDrift = SimulatorSettingsNP[SIM_POLARDRIFT].getValue();
+            rotationCW = SimulatorSettingsNP[SIM_ROTATION].getValue();
             //  Kwiq++
-            king_gamma = SimulatorSettingsN[14].value * 0.0174532925;
-            king_theta = SimulatorSettingsN[15].value * 0.0174532925;
-            TimeFactor = SimulatorSettingsN[16].value;
+            king_gamma = SimulatorSettingsNP[SIM_KING_GAMMA].getValue() * 0.0174532925;
+            king_theta = SimulatorSettingsNP[SIM_KING_THETA].getValue() * 0.0174532925;
+            TimeFactor = SimulatorSettingsNP[SIM_TIME_FACTOR].getValue();
 
             return true;
         }
 
         // Record PE EQ to simulate different position in the sky than actual mount coordinate
         // This can be useful to simulate Periodic Error or cone error or any arbitrary error.
-        if (!strcmp(name, EqPENP.name))
+        if (EqPENP.isNameMatch(name))
         {
-            IUUpdateNumber(&EqPENP, values, names, n);
-            EqPENP.s = IPS_OK;
+            EqPENP.update(values, names, n);
+            EqPENP.setState(IPS_OK);
 
-            INDI::IEquatorialCoordinates epochPos { EqPEN[AXIS_RA].value, EqPEN[AXIS_DE].value }, J2000Pos { 0, 0 };
+            INDI::IEquatorialCoordinates epochPos { EqPENP[AXIS_RA].getValue(), EqPENP[AXIS_DE].getValue() }, J2000Pos { 0, 0 };
             INDI::ObservedToJ2000(&epochPos, ln_get_julian_from_sys(), &J2000Pos);
             currentRA  = J2000Pos.rightascension;
             currentDE = J2000Pos.declination;
             usePE = true;
-            IDSetNumber(&EqPENP, nullptr);
+            EqPENP.apply();
             return true;
         }
     }
@@ -1148,44 +1064,52 @@ bool GuideSim::ISNewSwitch(const char * dev, const char * name, ISState * states
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
     {
 
-        if (!strcmp(name, SimulateRgbSP.name))
+        if (SimulateRgbSP.isNameMatch(name))
         {
-            IUUpdateSwitch(&SimulateRgbSP, states, names, n);
-            int index = IUFindOnSwitchIndex(&SimulateRgbSP);
+            SimulateRgbSP.update(states, names, n);
+            int index = SimulateRgbSP.findOnSwitchIndex();
             if (index == -1)
             {
-                SimulateRgbSP.s = IPS_ALERT;
+                SimulateRgbSP.setState(IPS_ALERT);
                 LOG_INFO("Cannot determine whether RGB simulation should be switched on or off.");
-                IDSetSwitch(&SimulateRgbSP, nullptr);
+                SimulateRgbSP.apply();
                 return false;
             }
 
             simulateRGB = index == 0;
             setRGB(simulateRGB);
 
-            SimulateRgbS[0].s = simulateRGB ? ISS_ON : ISS_OFF;
-            SimulateRgbS[1].s = simulateRGB ? ISS_OFF : ISS_ON;
-            SimulateRgbSP.s   = IPS_OK;
-            IDSetSwitch(&SimulateRgbSP, nullptr);
+            SimulateRgbSP[SIMULATE_YES].setState(simulateRGB ? ISS_ON : ISS_OFF);
+            SimulateRgbSP[SIMULATE_NO].setState(simulateRGB ? ISS_OFF : ISS_ON);
+            SimulateRgbSP.setState(IPS_OK);
+            SimulateRgbSP.apply();
 
             return true;
         }
 
-        if (strcmp(name, CoolerSP.name) == 0)
+        if (CoolerSP.isNameMatch(name))
         {
-            IUUpdateSwitch(&CoolerSP, states, names, n);
+            CoolerSP.update(states, names, n);
 
-            if (CoolerS[0].s == ISS_ON)
-                CoolerSP.s = IPS_BUSY;
+            if (CoolerSP[COOLER_ON].getState() == ISS_ON)
+                CoolerSP.setState(IPS_BUSY);
             else
             {
-                CoolerSP.s         = IPS_IDLE;
+                CoolerSP.setState(IPS_IDLE);
                 TemperatureRequest = 20;
                 TemperatureNP.s    = IPS_BUSY;
             }
 
-            IDSetSwitch(&CoolerSP, nullptr);
+            CoolerSP.apply();
 
+            return true;
+        }
+
+        if (ToggleTimeoutSP.isNameMatch(name))
+        {
+            ToggleTimeoutSP.update(states, names, n);
+            ToggleTimeoutSP.setState(IPS_OK);
+            ToggleTimeoutSP.apply();
             return true;
         }
     }
@@ -1197,23 +1121,14 @@ bool GuideSim::ISNewSwitch(const char * dev, const char * name, ISState * states
 void GuideSim::activeDevicesUpdated()
 {
 #ifdef USE_EQUATORIAL_PE
-    IDSnoopDevice(ActiveDeviceT[0].text, "EQUATORIAL_PE");
+    IDSnoopDevice(ActiveDeviceTP[0].getText(), "EQUATORIAL_PE");
 #else
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_TELESCOPE].text, "EQUATORIAL_EOD_COORD");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_TELESCOPE].getText(), "EQUATORIAL_EOD_COORD");
 #endif
-    IDSnoopDevice(ActiveDeviceT[ACTIVE_FOCUSER].text, "FWHM");
-
-    strncpy(FWHMNP.device, ActiveDeviceT[ACTIVE_FOCUSER].text, MAXINDIDEVICE);
 }
 
 bool GuideSim::ISSnoopDevice(XMLEle * root)
 {
-    if (IUSnoopNumber(root, &FWHMNP) == 0)
-    {
-        seeing = FWHMNP.np[0].value;
-        return true;
-    }
-
     // We try to snoop EQPEC first, if not found, we snoop regular EQNP
 #ifdef USE_EQUATORIAL_PE
     const char * propName = findXMLAttValu(root, "name");
@@ -1264,13 +1179,13 @@ bool GuideSim::saveConfigItems(FILE * fp)
 
 
     // Save CCD Simulator Config
-    IUSaveConfigNumber(fp, &SimulatorSettingsNP);
+    SimulatorSettingsNP.save(fp);
 
     // Gain
-    IUSaveConfigNumber(fp, &GainNP);
+    GainNP.save(fp);
 
     // RGB
-    IUSaveConfigSwitch(fp, &SimulateRgbSP);
+    SimulateRgbSP.save(fp);
 
     return true;
 }
@@ -1376,10 +1291,9 @@ void * GuideSim::streamVideo()
     return nullptr;
 }
 
-void GuideSim::addFITSKeywords(fitsfile *fptr, INDI::CCDChip *targetChip)
+void GuideSim::addFITSKeywords(INDI::CCDChip *targetChip, std::vector<INDI::FITSRecord> &fitsKeywords)
 {
-    INDI::CCD::addFITSKeywords(fptr, targetChip);
+    INDI::CCD::addFITSKeywords(targetChip, fitsKeywords);
 
-    int status = 0;
-    fits_update_key_dbl(fptr, "Gain", GainN[0].value, 3, "Gain", &status);
+    fitsKeywords.push_back({"GAIN", GainNP[0].getValue(), 3, "Gain"});
 }

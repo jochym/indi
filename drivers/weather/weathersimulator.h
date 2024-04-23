@@ -28,7 +28,7 @@
 
 class WeatherSimulator : public INDI::Weather
 {
-  public:
+public:
     WeatherSimulator();
 
     //  Generic indi device entries
@@ -40,13 +40,12 @@ class WeatherSimulator : public INDI::Weather
     virtual bool updateProperties() override;
     virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
 
-  protected:
+protected:
     virtual IPState updateWeather() override;
     virtual bool saveConfigItems(FILE *fp) override;
 
-  private:
-    INumber ControlWeatherN[5];
-    INumberVectorProperty ControlWeatherNP;
+private:
+    INDI::PropertyNumber ControlWeatherNP {5};
     enum
     {
         CONTROL_WEATHER,

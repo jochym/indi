@@ -1,5 +1,5 @@
 /*
-    ORIGINAL 
+    ORIGINAL
 	MyFocuserPro2 Focuser
     Copyright (C) 2019 Alan Townshend
 
@@ -41,8 +41,8 @@
 #define STEPMODE_ONEHUNDREDTWENTYEIGHT  128
 #define STEPMODE_TWOHUNDREDFIFTYSIX     256
 
-#define CDRIVER_VERSION_MAJOR           0
-#define CDRIVER_VERSION_MINOR           10
+#define CDRIVER_VERSION_MAJOR           1
+#define CDRIVER_VERSION_MINOR           0
 
 
 class MyFocuserPro2 : public INDI::Focuser
@@ -51,9 +51,10 @@ class MyFocuserPro2 : public INDI::Focuser
         MyFocuserPro2();
         virtual ~MyFocuserPro2() override = default;
 
-		// add step modes for TMC driver R Brown June 2021
-		typedef enum { FULL_STEP, HALF_STEP, QUARTER_STEP, EIGHTH_STEP, SIXTEENTH_STEP, 
-            THIRTYSECOND_STEP, SIXTYFOUR_STEP, ONEHUNDREDTWENTYEIGHT_STEP, TWOHUNDREDFIFTYSIX_STEP } FocusStepMode;
+        // add step modes for TMC driver R Brown June 2021
+        typedef enum { FULL_STEP, HALF_STEP, QUARTER_STEP, EIGHTH_STEP, SIXTEENTH_STEP,
+                       THIRTYSECOND_STEP, SIXTYFOUR_STEP, ONEHUNDREDTWENTYEIGHT_STEP, TWOHUNDREDFIFTYSIX_STEP
+                     } FocusStepMode;
 
         typedef enum {COIL_POWER_OFF, COIL_POWER_ON } CoilPower;
 
@@ -118,8 +119,8 @@ class MyFocuserPro2 : public INDI::Focuser
         bool Ack();
         /**
          * @brief sendCommand Send a string command to MyFocuserPro2.
-         * @param cmd Command to be sent, must already have the necessary delimeter ('#')
-         * @param res If not nullptr, the function will read until it detects the default delimeter ('#') up to ML_RES length.
+         * @param cmd Command to be sent, must already have the necessary delimiter ('#')
+         * @param res If not nullptr, the function will read until it detects the default delimiter ('#') up to ML_RES length.
          *        if nullptr, no read back is done and the function returns true.
          * @return True if successful, false otherwise.
          */
@@ -194,16 +195,16 @@ class MyFocuserPro2 : public INDI::Focuser
 
         double targetPos { 0 }, lastPos { 0 }, lastTemperature { 0 };
 
-		int msleep(long milliseconds);
+        int msleep(long milliseconds);
 
-		void clearbufferonerror();
+        void clearbufferonerror();
 
         // Read Only Temperature Reporting
         INumber TemperatureN[1];
         INumberVectorProperty TemperatureNP;
 
-		// Full/Half...256th Step modes
-		ISwitch StepModeS[9];
+        // Full/Half...256th Step modes
+        ISwitch StepModeS[9];
         ISwitchVectorProperty StepModeSP;
 
         // Backlash In settings
@@ -248,23 +249,25 @@ class MyFocuserPro2 : public INDI::Focuser
         // MyFocuserPro2 Buffer
         static const uint8_t ML_RES { 32 };
 
-        // MyFocuserPro2 Delimeter
+        // MyFocuserPro2 Delimiter
         static const char ML_DEL { '#' };
 
-		// mutex controls access to serial port
-		pthread_mutex_t cmdlock;
+        // mutex controls access to serial port
+        pthread_mutex_t cmdlock;
 
-		// MyFocuserPro2 Timeouts
-		static const uint8_t MYFOCUSERPRO2_SERIAL_TIMEOUT { 5 };
-		static const uint8_t MYFOCUSERPRO2_TCPIP_TIMEOUT  { 10 };
-		static const long    MYFOCUSERPRO2_SMALL_DELAY    { 50 };   // 50ms delay from send command to read response
-		static const long    MYFOCUSERPRO2_RECOVER_DELAY  { 200 };
+        // MyFocuserPro2 Timeouts
+        static const uint8_t MYFOCUSERPRO2_SERIAL_TIMEOUT { 5 };
+        static const uint8_t MYFOCUSERPRO2_TCPIP_TIMEOUT  { 10 };
+        static const long    MYFOCUSERPRO2_SMALL_DELAY    { 50 };   // 50ms delay from send command to read response
+        static const long    MYFOCUSERPRO2_RECOVER_DELAY  { 200 };
 
-		// update the temperature one every 5 seconds.
-		static constexpr const uint8_t GET_TEMPERATURE_FREQ{ 10 };
-		uint16_t Temperature_Counter { 0 };
+        // update the temperature one every 5 seconds.
+        static constexpr const uint8_t GET_TEMPERATURE_FREQ{ 10 };
+        uint16_t Temperature_Counter { 0 };
 
-		// Update position every second
-		static constexpr const uint8_t GET_POSITION_FREQ{ 1 };
-		uint16_t Position_Counter { 0 };
+        // Update position every second
+        static constexpr const uint8_t GET_POSITION_FREQ{ 1 };
+        uint16_t Position_Counter { 0 };
+
+        static constexpr const char *SETTINGS_TAB {"Settings"};
 };

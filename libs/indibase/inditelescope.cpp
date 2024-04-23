@@ -40,8 +40,7 @@ namespace INDI
 {
 
 Telescope::Telescope()
-    : DefaultDevice(), ScopeConfigFileName(GetHomeDirectory() + "/.indi/ScopeConfig.xml"),
-      ParkDataFileName(GetHomeDirectory() + "/.indi/ParkData.xml")
+    : DefaultDevice(), ParkDataFileName(GetHomeDirectory() + "/.indi/ParkData.xml")
 {
     controller = new Controller(this);
     controller->setJoystickCallback(joystickHelper);
@@ -68,10 +67,10 @@ bool Telescope::initProperties()
     DefaultDevice::initProperties();
 
     // Active Devices
-    IUFillText(&ActiveDeviceT[0], "ACTIVE_GPS", "GPS", "GPS Simulator");
-    IUFillText(&ActiveDeviceT[1], "ACTIVE_DOME", "DOME", "Dome Simulator");
-    IUFillTextVector(&ActiveDeviceTP, ActiveDeviceT, 2, getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB,
-                     IP_RW, 60, IPS_IDLE);
+    ActiveDeviceTP[ACTIVE_GPS].fill("ACTIVE_GPS", "GPS", "GPS Simulator");
+    ActiveDeviceTP[ACTIVE_DOME].fill("ACTIVE_DOME", "DOME", "Dome Simulator");
+    ActiveDeviceTP.fill(getDeviceName(), "ACTIVE_DEVICES", "Snoop devices", OPTIONS_TAB, IP_RW, 60, IPS_IDLE);
+    ActiveDeviceTP.load();
 
     // Use locking if dome is closed (and or) park scope if dome is closing
     IUFillSwitch(&DomePolicyS[DOME_IGNORED], "DOME_IGNORED", "Dome ignored", ISS_ON);
@@ -92,12 +91,11 @@ bool Telescope::initProperties()
     IUFillNumberVector(&TargetNP, TargetN, 2, getDeviceName(), "TARGET_EOD_COORD", "Slew Target", MOTION_TAB, IP_RO, 60,
                        IPS_IDLE);
 
-    IUFillSwitch(&ParkOptionS[PARK_CURRENT], "PARK_CURRENT", "Current", ISS_OFF);
-    IUFillSwitch(&ParkOptionS[PARK_DEFAULT], "PARK_DEFAULT", "Default", ISS_OFF);
-    IUFillSwitch(&ParkOptionS[PARK_WRITE_DATA], "PARK_WRITE_DATA", "Write Data", ISS_OFF);
-    IUFillSwitch(&ParkOptionS[PARK_PURGE_DATA], "PARK_PURGE_DATA", "Purge Data", ISS_OFF);
-    IUFillSwitchVector(&ParkOptionSP, ParkOptionS, 4, getDeviceName(), "TELESCOPE_PARK_OPTION", "Park Options",
-                       SITE_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+    ParkOptionSP[PARK_CURRENT].fill("PARK_CURRENT", "Current", ISS_OFF);
+    ParkOptionSP[PARK_DEFAULT].fill("PARK_DEFAULT", "Default", ISS_OFF);
+    ParkOptionSP[PARK_WRITE_DATA].fill("PARK_WRITE_DATA", "Write Data", ISS_OFF);
+    ParkOptionSP[PARK_PURGE_DATA].fill("PARK_PURGE_DATA", "Purge Data", ISS_OFF);
+    ParkOptionSP.fill(getDeviceName(), "TELESCOPE_PARK_OPTION", "Park Options", SITE_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
 
     IUFillText(&TimeT[0], "UTC", "UTC Time", nullptr);
     IUFillText(&TimeT[1], "OFFSET", "UTC Offset", nullptr);
@@ -122,8 +120,8 @@ bool Telescope::initProperties()
                        IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
 
     // PEC State
-    IUFillSwitch(&PECStateS[PEC_OFF], "PEC OFF", "PEC OFF", ISS_OFF);
-    IUFillSwitch(&PECStateS[PEC_ON], "PEC ON", "PEC ON", ISS_ON);
+    IUFillSwitch(&PECStateS[PEC_OFF], "PEC OFF", "PEC OFF", ISS_ON);
+    IUFillSwitch(&PECStateS[PEC_ON], "PEC ON", "PEC ON", ISS_OFF);
     IUFillSwitchVector(&PECStateSP, PECStateS, 2, getDeviceName(), "PEC", "PEC Playback", MOTION_TAB, IP_RW, ISR_1OFMANY, 0,
                        IPS_IDLE);
 
@@ -145,26 +143,7 @@ bool Telescope::initProperties()
     IUFillNumberVector(&TrackRateNP, TrackRateN, 2, getDeviceName(), "TELESCOPE_TRACK_RATE", "Track Rates", MAIN_CONTROL_TAB,
                        IP_RW, 60, IPS_IDLE);
 
-    // On Coord Set actions
-    IUFillSwitch(&CoordS[0], "TRACK", "Track", ISS_ON);
-    IUFillSwitch(&CoordS[1], "SLEW", "Slew", ISS_OFF);
-    IUFillSwitch(&CoordS[2], "SYNC", "Sync", ISS_OFF);
-
-    // If both GOTO and SYNC are supported
-    if (CanGOTO() && CanSync())
-        IUFillSwitchVector(&CoordSP, CoordS, 3, getDeviceName(), "ON_COORD_SET", "On Set", MAIN_CONTROL_TAB, IP_RW,
-                           ISR_1OFMANY, 60, IPS_IDLE);
-    // If ONLY GOTO is supported
-    else if (CanGOTO())
-        IUFillSwitchVector(&CoordSP, CoordS, 2, getDeviceName(), "ON_COORD_SET", "On Set", MAIN_CONTROL_TAB, IP_RW,
-                           ISR_1OFMANY, 60, IPS_IDLE);
-    // If ONLY SYNC is supported
-    else if (CanSync())
-    {
-        IUFillSwitch(&CoordS[0], "SYNC", "Sync", ISS_ON);
-        IUFillSwitchVector(&CoordSP, CoordS, 1, getDeviceName(), "ON_COORD_SET", "On Set", MAIN_CONTROL_TAB, IP_RW,
-                           ISR_1OFMANY, 60, IPS_IDLE);
-    }
+    generateCoordSet();
 
     if (nSlewRate >= 4)
         IUFillSwitchVector(&SlewRateSP, SlewRateS, nSlewRate, getDeviceName(), "TELESCOPE_SLEW_RATE", "Slew Rate",
@@ -211,27 +190,11 @@ bool Telescope::initProperties()
     IUFillSwitchVector(&MovementWESP, MovementWES, 2, getDeviceName(), "TELESCOPE_MOTION_WE", "Motion W/E", MOTION_TAB,
                        IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
 
-    IUFillNumber(&ScopeParametersN[0], "TELESCOPE_APERTURE", "Aperture (mm)", "%g", 10, 5000, 0, 0.0);
-    IUFillNumber(&ScopeParametersN[1], "TELESCOPE_FOCAL_LENGTH", "Focal Length (mm)", "%g", 10, 10000, 0, 0.0);
-    IUFillNumber(&ScopeParametersN[2], "GUIDER_APERTURE", "Guider Aperture (mm)", "%g", 10, 5000, 0, 0.0);
-    IUFillNumber(&ScopeParametersN[3], "GUIDER_FOCAL_LENGTH", "Guider Focal Length (mm)", "%g", 10, 10000, 0, 0.0);
-    IUFillNumberVector(&ScopeParametersNP, ScopeParametersN, 4, getDeviceName(), "TELESCOPE_INFO", "Scope Properties",
-                       OPTIONS_TAB, IP_RW, 60, IPS_OK);
-
-    // Scope config name
-    IUFillText(&ScopeConfigNameT[0], "SCOPE_CONFIG_NAME", "Config Name", "");
-    IUFillTextVector(&ScopeConfigNameTP, ScopeConfigNameT, 1, getDeviceName(), "SCOPE_CONFIG_NAME", "Scope Name",
-                     OPTIONS_TAB, IP_RW, 60, IPS_OK);
-
-    // Switch for aperture/focal length configs
-    IUFillSwitch(&ScopeConfigs[SCOPE_CONFIG1], "SCOPE_CONFIG1", "Config #1", ISS_ON);
-    IUFillSwitch(&ScopeConfigs[SCOPE_CONFIG2], "SCOPE_CONFIG2", "Config #2", ISS_OFF);
-    IUFillSwitch(&ScopeConfigs[SCOPE_CONFIG3], "SCOPE_CONFIG3", "Config #3", ISS_OFF);
-    IUFillSwitch(&ScopeConfigs[SCOPE_CONFIG4], "SCOPE_CONFIG4", "Config #4", ISS_OFF);
-    IUFillSwitch(&ScopeConfigs[SCOPE_CONFIG5], "SCOPE_CONFIG5", "Config #5", ISS_OFF);
-    IUFillSwitch(&ScopeConfigs[SCOPE_CONFIG6], "SCOPE_CONFIG6", "Config #6", ISS_OFF);
-    IUFillSwitchVector(&ScopeConfigsSP, ScopeConfigs, 6, getDeviceName(), "APPLY_SCOPE_CONFIG", "Scope Configs",
-                       OPTIONS_TAB, IP_RW, ISR_1OFMANY, 60, IPS_OK);
+    // Reverse NS or WE
+    ReverseMovementSP[REVERSE_NS].fill("REVERSE_NS", "North/South", ISS_OFF);
+    ReverseMovementSP[REVERSE_WE].fill("REVERSE_WE", "West/East", ISS_OFF);
+    ReverseMovementSP.fill(getDeviceName(), "TELESCOPE_REVERSE_MOTION", "Reverse", MOTION_TAB, IP_RW, ISR_NOFMANY, 60,
+                           IPS_IDLE);
 
     controller->initProperties();
 
@@ -272,11 +235,11 @@ bool Telescope::initProperties()
         registerConnection(tcpConnection);
     }
 
-    IDSnoopDevice(ActiveDeviceT[0].text, "GEOGRAPHIC_COORD");
-    IDSnoopDevice(ActiveDeviceT[0].text, "TIME_UTC");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_GPS].getText(), "GEOGRAPHIC_COORD");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_GPS].getText(), "TIME_UTC");
 
-    IDSnoopDevice(ActiveDeviceT[1].text, "DOME_PARK");
-    IDSnoopDevice(ActiveDeviceT[1].text, "DOME_SHUTTER");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_DOME].getText(), "DOME_PARK");
+    IDSnoopDevice(ActiveDeviceTP[ACTIVE_DOME].getText(), "DOME_SHUTTER");
 
     addPollPeriodControl();
 
@@ -303,13 +266,11 @@ bool Telescope::initProperties()
 
 void Telescope::ISGetProperties(const char *dev)
 {
-    //  First we let our parent populate
     DefaultDevice::ISGetProperties(dev);
 
     if (CanGOTO())
     {
-        defineProperty(&ActiveDeviceTP);
-        loadConfig(true, "ACTIVE_DEVICES");
+        defineProperty(ActiveDeviceTP);
 
         ISState isDomeIgnored = ISS_OFF;
         if (IUGetConfigSwitch(getDeviceName(), DomePolicySP.name, DomePolicyS[DOME_IGNORED].name, &isDomeIgnored) == 0)
@@ -318,19 +279,6 @@ void Telescope::ISGetProperties(const char *dev)
             DomePolicyS[DOME_LOCKS].s = (isDomeIgnored == ISS_ON) ? ISS_OFF : ISS_ON;
         }
         defineProperty(&DomePolicySP);
-    }
-
-    defineProperty(&ScopeParametersNP);
-    defineProperty(&ScopeConfigNameTP);
-
-    if (HasDefaultScopeConfig())
-    {
-        LoadScopeConfig();
-    }
-    else
-    {
-        loadConfig(true, "TELESCOPE_INFO");
-        loadConfig(true, "SCOPE_CONFIG_NAME");
     }
 
     if (CanGOTO())
@@ -379,6 +327,7 @@ bool Telescope::updateProperties()
         {
             defineProperty(&MovementNSSP);
             defineProperty(&MovementWESP);
+            defineProperty(ReverseMovementSP);
             if (nSlewRate >= 4)
                 defineProperty(&SlewRateSP);
             defineProperty(&TargetNP);
@@ -394,7 +343,7 @@ bool Telescope::updateProperties()
             if (parkDataType != PARK_NONE)
             {
                 defineProperty(&ParkPositionNP);
-                defineProperty(&ParkOptionSP);
+                defineProperty(ParkOptionSP);
             }
         }
 
@@ -418,9 +367,6 @@ bool Telescope::updateProperties()
 
         if (HasPECState())
             defineProperty(&PECStateSP);
-
-        defineProperty(&ScopeConfigNameTP);
-        defineProperty(&ScopeConfigsSP);
     }
     else
     {
@@ -440,6 +386,7 @@ bool Telescope::updateProperties()
         {
             deleteProperty(MovementNSSP.name);
             deleteProperty(MovementWESP.name);
+            deleteProperty(ReverseMovementSP.getName());
             if (nSlewRate >= 4)
                 deleteProperty(SlewRateSP.name);
             deleteProperty(TargetNP.name);
@@ -456,7 +403,7 @@ bool Telescope::updateProperties()
             if (parkDataType != PARK_NONE)
             {
                 deleteProperty(ParkPositionNP.name);
-                deleteProperty(ParkOptionSP.name);
+                deleteProperty(ParkOptionSP);
             }
         }
 
@@ -479,21 +426,18 @@ bool Telescope::updateProperties()
 
         if (HasPECState())
             deleteProperty(PECStateSP.name);
-
-        deleteProperty(ScopeConfigNameTP.name);
-        deleteProperty(ScopeConfigsSP.name);
     }
 
     if (CanGOTO())
     {
         controller->updateProperties();
 
-        ISwitchVectorProperty *useJoystick = getSwitch("USEJOYSTICK");
+        auto useJoystick = getSwitch("USEJOYSTICK");
         if (useJoystick)
         {
             if (isConnected())
             {
-                if (useJoystick->sp[0].s == ISS_ON)
+                if (useJoystick[0].getState() == ISS_ON)
                 {
                     defineProperty(&MotionControlModeTP);
                     loadConfig(true, "MOTION_CONTROL_MODE");
@@ -643,20 +587,16 @@ bool Telescope::saveConfigItems(FILE *fp)
 {
     DefaultDevice::saveConfigItems(fp);
 
-    IUSaveConfigText(fp, &ActiveDeviceTP);
+    ActiveDeviceTP.save(fp);
     IUSaveConfigSwitch(fp, &DomePolicySP);
 
     // Ensure that we only save valid locations
     if (HasLocation() && (LocationN[LOCATION_LONGITUDE].value != 0 || LocationN[LOCATION_LATITUDE].value != 0))
         IUSaveConfigNumber(fp, &LocationNP);
 
-    if (!HasDefaultScopeConfig())
-    {
-        if (ScopeParametersNP.s == IPS_OK)
-            IUSaveConfigNumber(fp, &ScopeParametersNP);
-        if (ScopeConfigNameTP.s == IPS_OK)
-            IUSaveConfigText(fp, &ScopeConfigNameTP);
-    }
+    if (CanGOTO())
+        ReverseMovementSP.save(fp);
+
     if (SlewRateS != nullptr)
         IUSaveConfigSwitch(fp, &SlewRateSP);
     if (HasPECState())
@@ -708,7 +648,9 @@ void Telescope::NewRaDec(double ra, double dec)
         IDSetSwitch(&TrackStateSP, nullptr);
     }
 
-    if (EqN[AXIS_RA].value != ra || EqN[AXIS_DE].value != dec || EqNP.s != lastEqState)
+    if (std::abs(EqN[AXIS_RA].value - ra) > EQ_NOTIFY_THRESHOLD ||
+            std::abs(EqN[AXIS_DE].value - dec) > EQ_NOTIFY_THRESHOLD ||
+            EqNP.s != lastEqState)
     {
         EqN[AXIS_RA].value = ra;
         EqN[AXIS_DE].value = dec;
@@ -764,27 +706,20 @@ bool Telescope::ISNewText(const char *dev, const char *name, char *texts[], char
             return processTimeInfo(texts[utcindex], texts[offsetindex]);
         }
 
-        if (!strcmp(name, ActiveDeviceTP.name))
+        if (ActiveDeviceTP.isNameMatch(name))
         {
-            ActiveDeviceTP.s = IPS_OK;
-            IUUpdateText(&ActiveDeviceTP, texts, names, n);
+            ActiveDeviceTP.setState(IPS_OK);
+            ActiveDeviceTP.update(texts, names, n);
             //  Update client display
-            IDSetText(&ActiveDeviceTP, nullptr);
+            ActiveDeviceTP.apply();
 
-            IDSnoopDevice(ActiveDeviceT[0].text, "GEOGRAPHIC_COORD");
-            IDSnoopDevice(ActiveDeviceT[0].text, "TIME_UTC");
+            IDSnoopDevice(ActiveDeviceTP[ACTIVE_GPS].getText(), "GEOGRAPHIC_COORD");
+            IDSnoopDevice(ActiveDeviceTP[ACTIVE_GPS].getText(), "TIME_UTC");
 
-            IDSnoopDevice(ActiveDeviceT[1].text, "DOME_PARK");
-            IDSnoopDevice(ActiveDeviceT[1].text, "DOME_SHUTTER");
-            return true;
-        }
+            IDSnoopDevice(ActiveDeviceTP[ACTIVE_DOME].getText(), "DOME_PARK");
+            IDSnoopDevice(ActiveDeviceTP[ACTIVE_DOME].getText(), "DOME_SHUTTER");
 
-        if (name && std::string(name) == "SCOPE_CONFIG_NAME")
-        {
-            ScopeConfigNameTP.s = IPS_OK;
-            IUUpdateText(&ScopeConfigNameTP, texts, names, n);
-            IDSetText(&ScopeConfigNameTP, nullptr);
-            UpdateScopeConfig();
+            saveConfig(ActiveDeviceTP);
             return true;
         }
     }
@@ -856,10 +791,28 @@ bool Telescope::ISNewNumber(const char *dev, const char *name, double values[], 
                     }
                 }
 
+                bool doFlip = false;
+                if (CanFlip())
+                {
+                    ISwitch *sw;
+                    sw = IUFindSwitch(&CoordSP, "FLIP");
+                    if ((sw != nullptr) && (sw->s == ISS_ON))
+                    {
+                        doFlip = true;
+                    }
+                }
+
                 // Remember Track State
                 RememberTrackState = TrackState;
-                // Issue GOTO
-                rc = Goto(ra, dec);
+                // Issue GOTO/Flip
+                if(doFlip)
+                {
+                    rc = Flip(ra, dec);
+                }
+                else
+                {
+                    rc = Goto(ra, dec);
+                }
                 if (rc)
                 {
                     EqNP.s = lastEqState = IPS_BUSY;
@@ -897,19 +850,6 @@ bool Telescope::ISNewNumber(const char *dev, const char *name, double values[], 
             double targetElev = values[elevationindex];
 
             return processLocationInfo(targetLat, targetLong, targetElev);
-        }
-
-        ///////////////////////////////////
-        // Telescope Info
-        ///////////////////////////////////
-        if (strcmp(name, "TELESCOPE_INFO") == 0)
-        {
-            ScopeParametersNP.s = IPS_OK;
-
-            IUUpdateNumber(&ScopeParametersNP, values, names, n);
-            IDSetNumber(&ScopeParametersNP, nullptr);
-            UpdateScopeConfig();
-            return true;
         }
 
         ///////////////////////////////////
@@ -970,7 +910,7 @@ bool Telescope::ISNewNumber(const char *dev, const char *name, double values[], 
 
             if (TrackState == SCOPE_TRACKING && !strcmp(IUFindOnSwitch(&TrackModeSP)->name, "TRACK_CUSTOM"))
             {
-                // Check that we do not abruplty change positive tracking rates to negative ones.
+                // Check that we do not abruptly change positive tracking rates to negative ones.
                 // tracking must be stopped first.
                 // Give warning is tracking sign would cause a reverse in direction
                 if ( (preAxis1 * TrackRateN[AXIS_RA].value < 0) || (preAxis2 * TrackRateN[AXIS_DE].value < 0) )
@@ -1155,7 +1095,11 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
             // Time to stop motion
             if (current_motion == -1 || (last_ns_motion != -1 && current_motion != last_ns_motion))
             {
-                if (MoveNS(last_ns_motion == 0 ? DIRECTION_NORTH : DIRECTION_SOUTH, MOTION_STOP))
+                auto targetDirection = last_ns_motion == 0 ? DIRECTION_NORTH : DIRECTION_SOUTH;
+                if (ReverseMovementSP[REVERSE_NS].getState() == ISS_ON)
+                    targetDirection = targetDirection == DIRECTION_NORTH ? DIRECTION_SOUTH : DIRECTION_NORTH;
+
+                if (MoveNS(targetDirection, MOTION_STOP))
                 {
                     IUResetSwitch(&MovementNSSP);
                     MovementNSSP.s = IPS_IDLE;
@@ -1173,10 +1117,14 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
                 if (TrackState != SCOPE_SLEWING && TrackState != SCOPE_PARKING)
                     RememberTrackState = TrackState;
 
-                if (MoveNS(current_motion == 0 ? DIRECTION_NORTH : DIRECTION_SOUTH, MOTION_START))
+                auto targetDirection = current_motion == 0 ? DIRECTION_NORTH : DIRECTION_SOUTH;
+                if (ReverseMovementSP[REVERSE_NS].getState() == ISS_ON)
+                    targetDirection = targetDirection == DIRECTION_NORTH ? DIRECTION_SOUTH : DIRECTION_NORTH;
+
+                if (MoveNS(targetDirection, MOTION_START))
                 {
                     MovementNSSP.s = IPS_BUSY;
-                    last_ns_motion = current_motion;
+                    last_ns_motion = targetDirection;
                 }
                 else
                 {
@@ -1220,7 +1168,10 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
             // Time to stop motion
             if (current_motion == -1 || (last_we_motion != -1 && current_motion != last_we_motion))
             {
-                if (MoveWE(last_we_motion == 0 ? DIRECTION_WEST : DIRECTION_EAST, MOTION_STOP))
+                auto targetDirection = last_we_motion == 0 ? DIRECTION_WEST : DIRECTION_EAST;
+                if (ReverseMovementSP[REVERSE_WE].getState() == ISS_ON)
+                    targetDirection = targetDirection == DIRECTION_EAST ? DIRECTION_WEST : DIRECTION_EAST;
+                if (MoveWE(targetDirection, MOTION_STOP))
                 {
                     IUResetSwitch(&MovementWESP);
                     MovementWESP.s = IPS_IDLE;
@@ -1238,10 +1189,14 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
                 if (TrackState != SCOPE_SLEWING && TrackState != SCOPE_PARKING)
                     RememberTrackState = TrackState;
 
-                if (MoveWE(current_motion == 0 ? DIRECTION_WEST : DIRECTION_EAST, MOTION_START))
+                auto targetDirection = current_motion == 0 ? DIRECTION_WEST : DIRECTION_EAST;
+                if (ReverseMovementSP[REVERSE_WE].getState() == ISS_ON)
+                    targetDirection = targetDirection == DIRECTION_EAST ? DIRECTION_WEST : DIRECTION_EAST;
+
+                if (MoveWE(targetDirection, MOTION_START))
                 {
                     MovementWESP.s = IPS_BUSY;
-                    last_we_motion = current_motion;
+                    last_we_motion = targetDirection;
                 }
                 else
                 {
@@ -1253,6 +1208,18 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
 
             IDSetSwitch(&MovementWESP, nullptr);
 
+            return true;
+        }
+
+        ///////////////////////////////////
+        // WE or NS Reverse Motion
+        ///////////////////////////////////
+        if (ReverseMovementSP.isNameMatch(name))
+        {
+            ReverseMovementSP.update(states, names, n);
+            ReverseMovementSP.setState(IPS_OK);
+            ReverseMovementSP.apply();
+            saveConfig(true, ReverseMovementSP.getName());
             return true;
         }
 
@@ -1300,7 +1267,7 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
                 //if (TrackState != SCOPE_PARKED)
                 //TrackState = SCOPE_IDLE;
                 // For Idle, Tracking, Parked state, we do not change its status, it should remain as is.
-                // For Slewing & Parking, state should go back to last rememberd state.
+                // For Slewing & Parking, state should go back to last remembered state.
                 if (TrackState == SCOPE_SLEWING || TrackState == SCOPE_PARKING)
                 {
                     TrackState = RememberTrackState;
@@ -1395,14 +1362,14 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
         ///////////////////////////////////
         // Park Options
         ///////////////////////////////////
-        if (!strcmp(name, ParkOptionSP.name))
+        if (ParkOptionSP.isNameMatch(name))
         {
-            IUUpdateSwitch(&ParkOptionSP, states, names, n);
-            int index = IUFindOnSwitchIndex(&ParkOptionSP);
+            ParkOptionSP.update(states, names, n);
+            auto index = ParkOptionSP.findOnSwitchIndex();
             if (index == -1)
                 return false;
 
-            IUResetSwitch(&ParkOptionSP);
+            ParkOptionSP.reset();
 
             bool rc = false;
 
@@ -1410,8 +1377,8 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
                     MovementWESP.s == IPS_BUSY)
             {
                 LOG_INFO("Can not change park position while slewing or already parked...");
-                ParkOptionSP.s = IPS_ALERT;
-                IDSetSwitch(&ParkOptionSP, nullptr);
+                ParkOptionSP.setState(IPS_ALERT);
+                ParkOptionSP.apply();
                 return false;
             }
 
@@ -1439,9 +1406,8 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
                     break;
             }
 
-            ParkOptionSP.s = rc ? IPS_OK : IPS_ALERT;
-            IDSetSwitch(&ParkOptionSP, nullptr);
-
+            ParkOptionSP.setState(rc ? IPS_OK : IPS_ALERT);
+            ParkOptionSP.apply();
             return true;
         }
 
@@ -1468,7 +1434,7 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
 #endif
             DomePolicySP.s = IPS_OK;
             IDSetSwitch(&DomePolicySP, nullptr);
-            triggerSnoop(ActiveDeviceT[1].text, "DOME_PARK");
+            triggerSnoop(ActiveDeviceTP[ACTIVE_DOME].getText(), "DOME_PARK");
             return true;
         }
 
@@ -1535,25 +1501,13 @@ bool Telescope::ISNewSwitch(const char *dev, const char *name, ISState *states, 
                 LOG_INFO("Joystick motion is unlocked.");
             return true;
         }
-
-        ///////////////////////////////////
-        // Scope Apply Config
-        ///////////////////////////////////
-        if (name && std::string(name) == "APPLY_SCOPE_CONFIG")
-        {
-            IUUpdateSwitch(&ScopeConfigsSP, states, names, n);
-            bool rc          = LoadScopeConfig();
-            ScopeConfigsSP.s = (rc ? IPS_OK : IPS_ALERT);
-            IDSetSwitch(&ScopeConfigsSP, nullptr);
-            return true;
-        }
     }
 
     bool rc = controller->ISNewSwitch(dev, name, states, names, n);
     if (rc)
     {
-        ISwitchVectorProperty *useJoystick = getSwitch("USEJOYSTICK");
-        if (useJoystick && useJoystick->sp[0].s == ISS_ON)
+        auto useJoystick = getSwitch("USEJOYSTICK");
+        if (useJoystick && useJoystick[0].getState() == ISS_ON)
         {
             defineProperty(&MotionControlModeTP);
             defineProperty(&LockAxisSP);
@@ -1606,6 +1560,15 @@ void Telescope::TimerHit()
 
         SetTimer(getCurrentPollingPeriod());
     }
+}
+
+bool Telescope::Flip(double ra, double dec)
+{
+    INDI_UNUSED(ra);
+    INDI_UNUSED(dec);
+
+    DEBUG(Logger::DBG_WARNING, "Flip is not supported.");
+    return false;
 }
 
 bool Telescope::Goto(double ra, double dec)
@@ -1799,26 +1762,39 @@ bool Telescope::SetParkPosition(double Axis1Value, double Axis2Value)
     return true;
 }
 
+void Telescope::generateCoordSet()
+{
+    std::vector <std::tuple<std::string, std::string>> coords;
+
+    coords.push_back(std::make_tuple("TRACK", "Track"));
+
+    if(CanGOTO())
+        coords.push_back(std::make_tuple("SLEW", "Slew"));
+
+    if(CanSync())
+        coords.push_back(std::make_tuple("SYNC", "Sync"));
+
+    if(CanFlip())
+        coords.push_back(std::make_tuple("FLIP", "Flip"));
+
+    int j = 0;
+    for(auto i : coords)
+    {
+        IUFillSwitch(&CoordS[j], std::get<0>(i).c_str(), std::get<1>(i).c_str(), j == 0 ? ISS_ON : ISS_OFF);
+        ++j;
+    }
+
+    IUFillSwitchVector(&CoordSP, CoordS, static_cast<int>(coords.size()), getDeviceName(), "ON_COORD_SET", "On Set",
+                       MAIN_CONTROL_TAB, IP_RW,
+                       ISR_1OFMANY, 60, IPS_IDLE);
+}
+
 void Telescope::SetTelescopeCapability(uint32_t cap, uint8_t slewRateCount)
 {
     capability = cap;
     nSlewRate  = slewRateCount;
 
-    // If both GOTO and SYNC are supported
-    if (CanGOTO() && CanSync())
-        IUFillSwitchVector(&CoordSP, CoordS, 3, getDeviceName(), "ON_COORD_SET", "On Set", MAIN_CONTROL_TAB, IP_RW,
-                           ISR_1OFMANY, 60, IPS_IDLE);
-    // If ONLY GOTO is supported
-    else if (CanGOTO())
-        IUFillSwitchVector(&CoordSP, CoordS, 2, getDeviceName(), "ON_COORD_SET", "On Set", MAIN_CONTROL_TAB, IP_RW,
-                           ISR_1OFMANY, 60, IPS_IDLE);
-    // If ONLY SYNC is supported
-    else if (CanSync())
-    {
-        IUFillSwitch(&CoordS[0], "SYNC", "Sync", ISS_ON);
-        IUFillSwitchVector(&CoordSP, CoordS, 1, getDeviceName(), "ON_COORD_SET", "On Set", MAIN_CONTROL_TAB, IP_RW,
-                           ISR_1OFMANY, 60, IPS_IDLE);
-    }
+    generateCoordSet();
 
     if (nSlewRate >= 4)
     {
@@ -1858,7 +1834,7 @@ void Telescope::SetParkDataType(TelescopeParkData type)
 {
     parkDataType = type;
 
-    if (parkDataType != PARK_NONE)
+    if (parkDataType != PARK_NONE && parkDataType != PARK_SIMPLE)
     {
         switch (parkDataType)
         {
@@ -1943,10 +1919,13 @@ bool Telescope::InitPark()
 
     SyncParkStatus(isParked());
 
-    LOGF_DEBUG("InitPark Axis1 %.2f Axis2 %.2f", Axis1ParkPosition, Axis2ParkPosition);
-    ParkPositionN[AXIS_RA].value = Axis1ParkPosition;
-    ParkPositionN[AXIS_DE].value = Axis2ParkPosition;
-    IDSetNumber(&ParkPositionNP, nullptr);
+    if (parkDataType != PARK_SIMPLE)
+    {
+        LOGF_DEBUG("InitPark Axis1 %.2f Axis2 %.2f", Axis1ParkPosition, Axis2ParkPosition);
+        ParkPositionN[AXIS_RA].value = Axis1ParkPosition;
+        ParkPositionN[AXIS_DE].value = Axis2ParkPosition;
+        IDSetNumber(&ParkPositionNP, nullptr);
+    }
 
     return true;
 }
@@ -2029,12 +2008,21 @@ const char *Telescope::LoadParkXML()
 
     ParkdeviceXml        = parkxml;
     ParkstatusXml        = findXMLEle(parkxml, "parkstatus");
-    ParkpositionXml      = findXMLEle(parkxml, "parkposition");
-    ParkpositionAxis1Xml = findXMLEle(ParkpositionXml, "axis1position");
-    ParkpositionAxis2Xml = findXMLEle(ParkpositionXml, "axis2position");
 
+    if (parkDataType != PARK_SIMPLE)
+    {
+        ParkpositionXml      = findXMLEle(parkxml, "parkposition");
+        if (ParkpositionXml)
+            ParkpositionAxis1Xml = findXMLEle(ParkpositionXml, "axis1position");
+        if (ParkpositionXml)
+            ParkpositionAxis2Xml = findXMLEle(ParkpositionXml, "axis2position");
 
-    if (ParkstatusXml == nullptr || ParkpositionAxis1Xml == nullptr || ParkpositionAxis2Xml == nullptr)
+        if (ParkstatusXml == nullptr || ParkpositionAxis1Xml == nullptr || ParkpositionAxis2Xml == nullptr)
+        {
+            return "Park data invalid or missing.";
+        }
+    }
+    else if (ParkstatusXml == nullptr)
     {
         return "Park data invalid or missing.";
     }
@@ -2053,28 +2041,33 @@ const char *Telescope::LoadParkData()
     if (!strcmp(pcdataXMLEle(ParkstatusXml), "true"))
         IsParked = true;
 
-    double axis1Pos = std::numeric_limits<double>::quiet_NaN();
-    double axis2Pos = std::numeric_limits<double>::quiet_NaN();
-
-    int rc = sscanf(pcdataXMLEle(ParkpositionAxis1Xml), "%lf", &axis1Pos);
-    if (rc != 1)
+    if (parkDataType != PARK_SIMPLE)
     {
-        return "Unable to parse Park Position Axis 1.";
-    }
-    rc = sscanf(pcdataXMLEle(ParkpositionAxis2Xml), "%lf", &axis2Pos);
-    if (rc != 1)
-    {
-        return "Unable to parse Park Position Axis 2.";
+        double axis1Pos = std::numeric_limits<double>::quiet_NaN();
+        double axis2Pos = std::numeric_limits<double>::quiet_NaN();
+
+        int rc = sscanf(pcdataXMLEle(ParkpositionAxis1Xml), "%lf", &axis1Pos);
+        if (rc != 1)
+        {
+            return "Unable to parse Park Position Axis 1.";
+        }
+        rc = sscanf(pcdataXMLEle(ParkpositionAxis2Xml), "%lf", &axis2Pos);
+        if (rc != 1)
+        {
+            return "Unable to parse Park Position Axis 2.";
+        }
+
+        if (std::isnan(axis1Pos) == false && std::isnan(axis2Pos) == false)
+        {
+            Axis1ParkPosition = axis1Pos;
+            Axis2ParkPosition = axis2Pos;
+            return nullptr;
+        }
+
+        return "Failed to parse Park Position.";
     }
 
-    if (std::isnan(axis1Pos) == false && std::isnan(axis2Pos) == false)
-    {
-        Axis1ParkPosition = axis1Pos;
-        Axis2ParkPosition = axis2Pos;
-        return nullptr;
-    }
-
-    return "Failed to parse Park Position.";
+    return nullptr;
 }
 
 bool Telescope::PurgeParkData()
@@ -2212,19 +2205,22 @@ bool Telescope::WriteParkData()
 
     if (!ParkstatusXml)
         ParkstatusXml = addXMLEle(ParkdeviceXml, "parkstatus");
-    if (!ParkpositionXml)
-        ParkpositionXml = addXMLEle(ParkdeviceXml, "parkposition");
-    if (!ParkpositionAxis1Xml)
-        ParkpositionAxis1Xml = addXMLEle(ParkpositionXml, "axis1position");
-    if (!ParkpositionAxis2Xml)
-        ParkpositionAxis2Xml = addXMLEle(ParkpositionXml, "axis2position");
-
     editXMLEle(ParkstatusXml, (IsParked ? "true" : "false"));
 
-    snprintf(pcdata, sizeof(pcdata), "%lf", Axis1ParkPosition);
-    editXMLEle(ParkpositionAxis1Xml, pcdata);
-    snprintf(pcdata, sizeof(pcdata), "%lf", Axis2ParkPosition);
-    editXMLEle(ParkpositionAxis2Xml, pcdata);
+    if (parkDataType != PARK_SIMPLE)
+    {
+        if (!ParkpositionXml)
+            ParkpositionXml = addXMLEle(ParkdeviceXml, "parkposition");
+        if (!ParkpositionAxis1Xml)
+            ParkpositionAxis1Xml = addXMLEle(ParkpositionXml, "axis1position");
+        if (!ParkpositionAxis2Xml)
+            ParkpositionAxis2Xml = addXMLEle(ParkpositionXml, "axis2position");
+
+        snprintf(pcdata, sizeof(pcdata), "%lf", Axis1ParkPosition);
+        editXMLEle(ParkpositionAxis1Xml, pcdata);
+        snprintf(pcdata, sizeof(pcdata), "%lf", Axis2ParkPosition);
+        editXMLEle(ParkpositionAxis2Xml, pcdata);
+    }
 
     prXMLEle(fp, ParkdataXmlRoot, 0);
     fclose(fp);
@@ -2297,10 +2293,10 @@ void Telescope::processButton(const char *button_n, ISState state)
 
     if (!strcmp(button_n, "ABORTBUTTON"))
     {
-        ISwitchVectorProperty *trackSW = getSwitch("TELESCOPE_TRACK_MODE");
+        auto trackSW = getSwitch("TELESCOPE_TRACK_MODE");
         // Only abort if we have some sort of motion going on
         if (ParkSP.s == IPS_BUSY || MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY || EqNP.s == IPS_BUSY ||
-                (trackSW && trackSW->s == IPS_BUSY))
+                (trackSW && trackSW.getState() == IPS_BUSY))
         {
             // Invoke parent processing so that Telescope takes care of abort cross-check
             ISState states[1] = { ISS_ON };
@@ -2640,336 +2636,6 @@ void Telescope::setPECState(TelescopePECState state)
     }
 }
 
-bool Telescope::LoadScopeConfig()
-{
-    if (!CheckFile(ScopeConfigFileName, false))
-    {
-        LOGF_INFO("Can't open XML file (%s) for read", ScopeConfigFileName.c_str());
-        return false;
-    }
-    LilXML *XmlHandle      = newLilXML();
-    FILE *FilePtr          = fopen(ScopeConfigFileName.c_str(), "r");
-    XMLEle *RootXmlNode    = nullptr;
-    XMLEle *CurrentXmlNode = nullptr;
-    XMLAtt *Ap             = nullptr;
-    bool DeviceFound       = false;
-    char ErrMsg[512];
-
-    RootXmlNode = readXMLFile(FilePtr, XmlHandle, ErrMsg);
-    fclose(FilePtr);
-    delLilXML(XmlHandle);
-    XmlHandle = nullptr;
-    if (!RootXmlNode)
-    {
-        LOGF_INFO("Failed to parse XML file (%s): %s", ScopeConfigFileName.c_str(), ErrMsg);
-        return false;
-    }
-    if (std::string(tagXMLEle(RootXmlNode)) != ScopeConfigRootXmlNode)
-    {
-        LOGF_INFO("Not a scope config XML file (%s)", ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    CurrentXmlNode = nextXMLEle(RootXmlNode, 1);
-    // Find the current telescope in the config file
-    while (CurrentXmlNode)
-    {
-        if (std::string(tagXMLEle(CurrentXmlNode)) != ScopeConfigDeviceXmlNode)
-        {
-            CurrentXmlNode = nextXMLEle(RootXmlNode, 0);
-            continue;
-        }
-        Ap = findXMLAtt(CurrentXmlNode, ScopeConfigNameXmlNode.c_str());
-        if (Ap && !strcmp(valuXMLAtt(Ap), getDeviceName()))
-        {
-            DeviceFound = true;
-            break;
-        }
-        CurrentXmlNode = nextXMLEle(RootXmlNode, 0);
-    }
-    if (!DeviceFound)
-    {
-        LOGF_INFO("No a scope config found for %s in the XML file (%s)", getDeviceName(),
-                  ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    // Read the values
-    XMLEle *XmlNode       = nullptr;
-    const int ConfigIndex = GetScopeConfigIndex();
-    double ScopeFoc = 0, ScopeAp = 0;
-    double GScopeFoc = 0, GScopeAp = 0;
-    std::string ConfigName;
-
-    CurrentXmlNode = findXMLEle(CurrentXmlNode, ("config" + std::to_string(ConfigIndex)).c_str());
-    if (!CurrentXmlNode)
-    {
-        DEBUGF(Logger::DBG_SESSION,
-               "Config %d is not found in the XML file (%s). To save a new config, update and set scope properties and "
-               "config name.",
-               ConfigIndex, ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigScopeFocXmlNode.c_str());
-    if (!XmlNode || sscanf(pcdataXMLEle(XmlNode), "%lf", &ScopeFoc) != 1)
-    {
-        LOGF_INFO("Can't read the telescope focal length from the XML file (%s)",
-                  ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigScopeApXmlNode.c_str());
-    if (!XmlNode || sscanf(pcdataXMLEle(XmlNode), "%lf", &ScopeAp) != 1)
-    {
-        LOGF_INFO("Can't read the telescope aperture from the XML file (%s)",
-                  ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigGScopeFocXmlNode.c_str());
-    if (!XmlNode || sscanf(pcdataXMLEle(XmlNode), "%lf", &GScopeFoc) != 1)
-    {
-        LOGF_INFO("Can't read the guide scope focal length from the XML file (%s)",
-                  ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigGScopeApXmlNode.c_str());
-    if (!XmlNode || sscanf(pcdataXMLEle(XmlNode), "%lf", &GScopeAp) != 1)
-    {
-        LOGF_INFO("Can't read the guide scope aperture from the XML file (%s)",
-                  ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigLabelApXmlNode.c_str());
-    if (!XmlNode)
-    {
-        LOGF_INFO("Can't read the telescope config name from the XML file (%s)",
-                  ScopeConfigFileName.c_str());
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    ConfigName = pcdataXMLEle(XmlNode);
-    // Store the loaded values
-    if (IUFindNumber(&ScopeParametersNP, "TELESCOPE_FOCAL_LENGTH"))
-    {
-        IUFindNumber(&ScopeParametersNP, "TELESCOPE_FOCAL_LENGTH")->value = ScopeFoc;
-    }
-    if (IUFindNumber(&ScopeParametersNP, "TELESCOPE_APERTURE"))
-    {
-        IUFindNumber(&ScopeParametersNP, "TELESCOPE_APERTURE")->value = ScopeAp;
-    }
-    if (IUFindNumber(&ScopeParametersNP, "GUIDER_FOCAL_LENGTH"))
-    {
-        IUFindNumber(&ScopeParametersNP, "GUIDER_FOCAL_LENGTH")->value = GScopeFoc;
-    }
-    if (IUFindNumber(&ScopeParametersNP, "GUIDER_APERTURE"))
-    {
-        IUFindNumber(&ScopeParametersNP, "GUIDER_APERTURE")->value = GScopeAp;
-    }
-    if (IUFindText(&ScopeConfigNameTP, "SCOPE_CONFIG_NAME"))
-    {
-        IUSaveText(IUFindText(&ScopeConfigNameTP, "SCOPE_CONFIG_NAME"), ConfigName.c_str());
-    }
-    ScopeParametersNP.s = IPS_OK;
-    IDSetNumber(&ScopeParametersNP, nullptr);
-    ScopeConfigNameTP.s = IPS_OK;
-    IDSetText(&ScopeConfigNameTP, nullptr);
-    delXMLEle(RootXmlNode);
-    return true;
-}
-
-bool Telescope::HasDefaultScopeConfig()
-{
-    if (!CheckFile(ScopeConfigFileName, false))
-    {
-        return false;
-    }
-    LilXML *XmlHandle      = newLilXML();
-    FILE *FilePtr          = fopen(ScopeConfigFileName.c_str(), "r");
-    XMLEle *RootXmlNode    = nullptr;
-    XMLEle *CurrentXmlNode = nullptr;
-    XMLAtt *Ap             = nullptr;
-    bool DeviceFound       = false;
-    char ErrMsg[512];
-
-    RootXmlNode = readXMLFile(FilePtr, XmlHandle, ErrMsg);
-    fclose(FilePtr);
-    delLilXML(XmlHandle);
-    XmlHandle = nullptr;
-    if (!RootXmlNode)
-    {
-        return false;
-    }
-    if (std::string(tagXMLEle(RootXmlNode)) != ScopeConfigRootXmlNode)
-    {
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    CurrentXmlNode = nextXMLEle(RootXmlNode, 1);
-    // Find the current telescope in the config file
-    while (CurrentXmlNode)
-    {
-        if (std::string(tagXMLEle(CurrentXmlNode)) != ScopeConfigDeviceXmlNode)
-        {
-            CurrentXmlNode = nextXMLEle(RootXmlNode, 0);
-            continue;
-        }
-        Ap = findXMLAtt(CurrentXmlNode, ScopeConfigNameXmlNode.c_str());
-        if (Ap && !strcmp(valuXMLAtt(Ap), getDeviceName()))
-        {
-            DeviceFound = true;
-            break;
-        }
-        CurrentXmlNode = nextXMLEle(RootXmlNode, 0);
-    }
-    if (!DeviceFound)
-    {
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    // Check the existence of Config #1 node
-    CurrentXmlNode = findXMLEle(CurrentXmlNode, "config1");
-    if (!CurrentXmlNode)
-    {
-        delXMLEle(RootXmlNode);
-        return false;
-    }
-    return true;
-}
-
-bool Telescope::UpdateScopeConfig()
-{
-    // Get the config values from the UI
-    const int ConfigIndex = GetScopeConfigIndex();
-    double ScopeFoc = 0, ScopeAp = 0;
-    double GScopeFoc = 0, GScopeAp = 0;
-    std::string ConfigName;
-
-    if (IUFindNumber(&ScopeParametersNP, "TELESCOPE_FOCAL_LENGTH"))
-    {
-        ScopeFoc = IUFindNumber(&ScopeParametersNP, "TELESCOPE_FOCAL_LENGTH")->value;
-    }
-    if (IUFindNumber(&ScopeParametersNP, "TELESCOPE_APERTURE"))
-    {
-        ScopeAp = IUFindNumber(&ScopeParametersNP, "TELESCOPE_APERTURE")->value;
-    }
-    if (IUFindNumber(&ScopeParametersNP, "GUIDER_FOCAL_LENGTH"))
-    {
-        GScopeFoc = IUFindNumber(&ScopeParametersNP, "GUIDER_FOCAL_LENGTH")->value;
-    }
-    if (IUFindNumber(&ScopeParametersNP, "GUIDER_APERTURE"))
-    {
-        GScopeAp = IUFindNumber(&ScopeParametersNP, "GUIDER_APERTURE")->value;
-    }
-    if (IUFindText(&ScopeConfigNameTP, "SCOPE_CONFIG_NAME") &&
-            IUFindText(&ScopeConfigNameTP, "SCOPE_CONFIG_NAME")->text)
-    {
-        ConfigName = IUFindText(&ScopeConfigNameTP, "SCOPE_CONFIG_NAME")->text;
-    }
-    // Save the values to the actual XML file
-    if (!CheckFile(ScopeConfigFileName, true))
-    {
-        LOGF_INFO("Can't open XML file (%s) for write", ScopeConfigFileName.c_str());
-        return false;
-    }
-    // Open the existing XML file for write
-    LilXML *XmlHandle   = newLilXML();
-    FILE *FilePtr       = fopen(ScopeConfigFileName.c_str(), "r");
-    XMLEle *RootXmlNode = nullptr;
-    XMLAtt *Ap          = nullptr;
-    bool DeviceFound    = false;
-    char ErrMsg[512];
-
-    RootXmlNode = readXMLFile(FilePtr, XmlHandle, ErrMsg);
-    delLilXML(XmlHandle);
-    XmlHandle = nullptr;
-    fclose(FilePtr);
-
-    XMLEle *CurrentXmlNode = nullptr;
-    XMLEle *XmlNode        = nullptr;
-
-    if (!RootXmlNode || std::string(tagXMLEle(RootXmlNode)) != ScopeConfigRootXmlNode)
-    {
-        RootXmlNode = addXMLEle(nullptr, ScopeConfigRootXmlNode.c_str());
-    }
-    CurrentXmlNode = nextXMLEle(RootXmlNode, 1);
-    // Find the current telescope in the config file
-    while (CurrentXmlNode)
-    {
-        if (std::string(tagXMLEle(CurrentXmlNode)) != ScopeConfigDeviceXmlNode)
-        {
-            CurrentXmlNode = nextXMLEle(RootXmlNode, 0);
-            continue;
-        }
-        Ap = findXMLAtt(CurrentXmlNode, ScopeConfigNameXmlNode.c_str());
-        if (Ap && !strcmp(valuXMLAtt(Ap), getDeviceName()))
-        {
-            DeviceFound = true;
-            break;
-        }
-        CurrentXmlNode = nextXMLEle(RootXmlNode, 0);
-    }
-    if (!DeviceFound)
-    {
-        CurrentXmlNode = addXMLEle(RootXmlNode, ScopeConfigDeviceXmlNode.c_str());
-        addXMLAtt(CurrentXmlNode, ScopeConfigNameXmlNode.c_str(), getDeviceName());
-    }
-    // Add or update the config node
-    XmlNode = findXMLEle(CurrentXmlNode, ("config" + std::to_string(ConfigIndex)).c_str());
-    if (!XmlNode)
-    {
-        CurrentXmlNode = addXMLEle(CurrentXmlNode, ("config" + std::to_string(ConfigIndex)).c_str());
-    }
-    else
-    {
-        CurrentXmlNode = XmlNode;
-    }
-    // Add or update the telescope focal length
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigScopeFocXmlNode.c_str());
-    if (!XmlNode)
-    {
-        XmlNode = addXMLEle(CurrentXmlNode, ScopeConfigScopeFocXmlNode.c_str());
-    }
-    editXMLEle(XmlNode, std::to_string(ScopeFoc).c_str());
-    // Add or update the telescope focal aperture
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigScopeApXmlNode.c_str());
-    if (!XmlNode)
-    {
-        XmlNode = addXMLEle(CurrentXmlNode, ScopeConfigScopeApXmlNode.c_str());
-    }
-    editXMLEle(XmlNode, std::to_string(ScopeAp).c_str());
-    // Add or update the guide scope focal length
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigGScopeFocXmlNode.c_str());
-    if (!XmlNode)
-    {
-        XmlNode = addXMLEle(CurrentXmlNode, ScopeConfigGScopeFocXmlNode.c_str());
-    }
-    editXMLEle(XmlNode, std::to_string(GScopeFoc).c_str());
-    // Add or update the guide scope focal aperture
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigGScopeApXmlNode.c_str());
-    if (!XmlNode)
-    {
-        XmlNode = addXMLEle(CurrentXmlNode, ScopeConfigGScopeApXmlNode.c_str());
-    }
-    editXMLEle(XmlNode, std::to_string(GScopeAp).c_str());
-    // Add or update the config name
-    XmlNode = findXMLEle(CurrentXmlNode, ScopeConfigLabelApXmlNode.c_str());
-    if (!XmlNode)
-    {
-        XmlNode = addXMLEle(CurrentXmlNode, ScopeConfigLabelApXmlNode.c_str());
-    }
-    editXMLEle(XmlNode, ConfigName.c_str());
-    // Save the final content
-    FilePtr = fopen(ScopeConfigFileName.c_str(), "w");
-    prXMLEle(FilePtr, RootXmlNode, 0);
-    fclose(FilePtr);
-    delXMLEle(RootXmlNode);
-    return true;
-}
-
 std::string Telescope::GetHomeDirectory() const
 {
     // Check first the HOME environmental variable
@@ -2981,35 +2647,6 @@ std::string Telescope::GetHomeDirectory() const
         HomeDir = getpwuid(getuid())->pw_dir;
     }
     return (HomeDir ? std::string(HomeDir) : "");
-}
-
-int Telescope::GetScopeConfigIndex() const
-{
-    if (IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG1") && IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG1")->s == ISS_ON)
-    {
-        return 1;
-    }
-    if (IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG2") && IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG2")->s == ISS_ON)
-    {
-        return 2;
-    }
-    if (IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG3") && IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG3")->s == ISS_ON)
-    {
-        return 3;
-    }
-    if (IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG4") && IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG4")->s == ISS_ON)
-    {
-        return 4;
-    }
-    if (IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG5") && IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG5")->s == ISS_ON)
-    {
-        return 5;
-    }
-    if (IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG6") && IUFindSwitch(&ScopeConfigsSP, "SCOPE_CONFIG6")->s == ISS_ON)
-    {
-        return 6;
-    }
-    return 0;
 }
 
 bool Telescope::CheckFile(const std::string &file_name, bool writable) const

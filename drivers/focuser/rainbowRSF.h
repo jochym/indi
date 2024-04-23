@@ -22,6 +22,7 @@
 
 #include <memory>
 #include "indifocuser.h"
+#include "indielapsedtimer.h"
 
 class RainbowRSF : public INDI::Focuser
 {
@@ -76,6 +77,9 @@ class RainbowRSF : public INDI::Focuser
 
         const static uint32_t homePosition { 8000 };
 
+        // Timer used to timeout when waiting for requested movement to complete.
+        INDI::ElapsedTimer m_MovementTimer;
+        bool m_MovementTimerActive { false };
 
         /////////////////////////////////////////////////////////////////////////////
         /// Static Helper Values
@@ -87,6 +91,6 @@ class RainbowRSF : public INDI::Focuser
         static constexpr const uint8_t DRIVER_TEMPERATURE_FREQ {10};
         // Wait up to a maximum of 3 seconds for serial input
         static constexpr const uint8_t DRIVER_TIMEOUT {3};
-        // Maximum buffer for sending/receving.
+        // Maximum buffer for sending/receiving.
         static constexpr const uint8_t DRIVER_LEN {16};
 };

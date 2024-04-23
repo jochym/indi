@@ -80,7 +80,7 @@ bool SimpleCCD::initProperties()
 
 /********************************************************************************************
 ** INDI is asking us to update the properties because there is a change in CONNECTION status
-** This fucntion is called whenever the device is connected or disconnected.
+** This function is called whenever the device is connected or disconnected.
 *********************************************************************************************/
 bool SimpleCCD::updateProperties()
 {
@@ -108,9 +108,7 @@ void SimpleCCD::setupParams()
     SetCCDParams(1280, 1024, 8, 5.4, 5.4);
 
     // Let's calculate how much memory we need for the primary CCD buffer
-    int nbuf;
-    nbuf = PrimaryCCD.getXRes() * PrimaryCCD.getYRes() * PrimaryCCD.getBPP() / 8;
-    nbuf += 512; //  leave a little extra at the end
+    uint32_t nbuf = PrimaryCCD.getXRes() * PrimaryCCD.getYRes() * PrimaryCCD.getBPP() / 8;
     PrimaryCCD.setFrameBufferSize(nbuf);
 }
 
@@ -164,14 +162,12 @@ float SimpleCCD::CalcTimeLeft()
 ***************************************************************************************/
 void SimpleCCD::TimerHit()
 {
-    long timeleft;
-
     if (!isConnected())
         return; //  No need to reset timer if we are not connected anymore
 
     if (InExposure)
     {
-        timeleft = CalcTimeLeft();
+        double timeleft = CalcTimeLeft();
 
         // Less than a 0.1 second away from exposure completion
         // This is an over simplified timing method, check CCDSimulator and simpleCCD for better timing checks
@@ -205,7 +201,7 @@ void SimpleCCD::TimerHit()
             /* If target temperature is higher, then increase current CCD temperature */
             if (currentCCDTemperature < TemperatureRequest)
                 currentCCDTemperature++;
-            /* If target temperature is lower, then decrese current CCD temperature */
+            /* If target temperature is lower, then decrease current CCD temperature */
             else if (currentCCDTemperature > TemperatureRequest)
                 currentCCDTemperature--;
             /* If they're equal, stop updating */

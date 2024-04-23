@@ -98,7 +98,7 @@ bool PegasusUPB::initProperties()
     /// Power Group
     ////////////////////////////////////////////////////////////////////////////
 
-    // Dew Labels. Need to delare them here to use in the Power usage section
+    // Dew Labels. Need to declare them here to use in the Power usage section
     IUFillText(&DewControlsLabelsT[0], "DEW_LABEL_1", "Dew A", "Dew A");
     IUFillText(&DewControlsLabelsT[1], "DEW_LABEL_2", "Dew B", "Dew B");
     IUFillText(&DewControlsLabelsT[2], "DEW_LABEL_3", "Dew C", "Dew C");
@@ -688,7 +688,8 @@ bool PegasusUPB::ISNewSwitch(const char * dev, const char * name, ISState * stat
         // USB Hub Control v2
         if (!strcmp(name, USBControlV2SP.name))
         {
-            bool rc[6] = {true};
+            bool rc[6] = {false};
+            std::fill_n(rc, 6, true);
             ISState ports[6] = {ISS_ON};
 
             for (int i = 0; i < USBControlV2SP.nsp; i++)
@@ -714,7 +715,8 @@ bool PegasusUPB::ISNewSwitch(const char * dev, const char * name, ISState * stat
                 USBControlV2SP.s = IPS_ALERT;
             }
 
-            IDSetSwitch(&USBControlSP, nullptr);
+            IDSetSwitch(&USBControlV2SP, nullptr);
+
             return true;
         }
 
@@ -1339,11 +1341,27 @@ bool PegasusUPB::sendFirmware()
 //////////////////////////////////////////////////////////////////////
 bool PegasusUPB::sensorUpdated(const std::vector<std::string> &result, uint8_t start, uint8_t end)
 {
+    if (lastSensorData.empty())
+        return true;
+
     for (uint8_t index = start; index <= end; index++)
-        if (result[index] != lastSensorData[index])
+    {
+        if (index >= lastSensorData.size() or result[index] != lastSensorData[index])
             return true;
+    }
 
     return false;
+}
+
+//////////////////////////////////////////////////////////////////////
+///
+//////////////////////////////////////////////////////////////////////
+bool PegasusUPB::stepperUpdated(const std::vector<std::string> &result, uint8_t index)
+{
+    if (lastStepperData.empty())
+        return true;
+
+    return index >= lastStepperData.size() or result[index] != lastSensorData[index];
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -1382,9 +1400,9 @@ bool PegasusUPB::getSensorData()
         if (sensorUpdated(result, 4, 6))
         {
             if (WI::syncCriticalParameters())
-                IDSetLight(&critialParametersLP, nullptr);
-            ParametersNP.s = IPS_OK;
-            IDSetNumber(&ParametersNP, nullptr);
+                critialParametersLP.apply();
+            ParametersNP.setState(IPS_OK);
+            ParametersNP.apply();
         }
 
         // Port Status
@@ -1447,7 +1465,7 @@ bool PegasusUPB::getSensorData()
 
         index = (version == UPB_V1) ? 11 : 12;
 
-        const double ampDivision = (version == UPB_V1) ? 400.0 : 300.0;
+        const double ampDivision = (version == UPB_V1) ? 400.0 : 480.0;
 
         // Current draw
         PowerCurrentN[0].value = std::stod(result[index]) / ampDivision;
@@ -1466,7 +1484,7 @@ bool PegasusUPB::getSensorData()
         DewCurrentDrawN[DEW_PWM_A].value = std::stod(result[index]) / ampDivision;
         DewCurrentDrawN[DEW_PWM_B].value = std::stod(result[index + 1]) / ampDivision;
         if (version == UPB_V2)
-            DewCurrentDrawN[DEW_PWM_C].value = std::stod(result[index + 2]) / (ampDivision * 2);
+            DewCurrentDrawN[DEW_PWM_C].value = std::stod(result[index + 2]) / 700;
         //        if (lastSensorData[index] != result[index] ||
         //                lastSensorData[index + 1] != result[index + 1] ||
         //                (version == UPB_V2 && lastSensorData[index + 2] != result[index + 2]))
@@ -1569,8 +1587,7 @@ bool PegasusUPB::getPowerData()
     if (sendCommand("PC", res))
     {
         std::vector<std::string> result = split(res, ":");
-        if ( (version == UPB_V1 && result.size() != 3) ||
-                (version == UPB_V2 && result.size() != 4))
+        if (result.size() != 4)
         {
             LOGF_WARN("Received wrong number (%i) of power sensor data (%s). Retrying...", result.size(), res);
             return false;
@@ -1585,24 +1602,22 @@ bool PegasusUPB::getPowerData()
         PowerConsumptionNP.s = IPS_OK;
         IDSetNumber(&PowerConsumptionNP, nullptr);
 
-        if (version == UPB_V2)
+        try
         {
-            try
-            {
-                std::chrono::milliseconds uptime(std::stol(result[3]));
-                using dhours = std::chrono::duration<double, std::ratio<3600>>;
-                std::stringstream ss;
-                ss << std::fixed << std::setprecision(3) << dhours(uptime).count();
-                IUSaveText(&FirmwareT[FIRMWARE_UPTIME], ss.str().c_str());
-            }
-            catch(...)
-            {
-                IUSaveText(&FirmwareT[FIRMWARE_UPTIME], "NA");
-                LOGF_WARN("Failed to process uptime: %s", result[3].c_str());
-                return false;
-            }
-            IDSetText(&FirmwareTP, nullptr);
+            std::chrono::milliseconds uptime(std::stol(result[3]));
+            using dhours = std::chrono::duration<double, std::ratio<3600>>;
+            std::stringstream ss;
+            ss << std::fixed << std::setprecision(3) << dhours(uptime).count();
+            IUSaveText(&FirmwareT[FIRMWARE_UPTIME], ss.str().c_str());
         }
+        catch(...)
+        {
+            // Uptime not critical, so just put debug statement on failure.
+            IUSaveText(&FirmwareT[FIRMWARE_UPTIME], "NA");
+            LOGF_DEBUG("Failed to process uptime: %s", result[3].c_str());
+        }
+        IDSetText(&FirmwareTP, nullptr);
+
 
         lastPowerData = result;
         return true;
@@ -1639,13 +1654,13 @@ bool PegasusUPB::getStepperData()
             IDSetNumber(&FocusAbsPosNP, nullptr);
             IDSetNumber(&FocusRelPosNP, nullptr);
         }
-        else if (result[0] != lastStepperData[0])
+        else if (stepperUpdated(result, 0))
             IDSetNumber(&FocusAbsPosNP, nullptr);
 
         FocusReverseS[INDI_ENABLED].s = (std::stoi(result[2]) == 1) ? ISS_ON : ISS_OFF;
         FocusReverseS[INDI_DISABLED].s = (std::stoi(result[2]) == 1) ? ISS_OFF : ISS_ON;
 
-        if (result[2] != lastStepperData[2])
+        if (stepperUpdated(result, 1))
             IDSetSwitch(&FocusReverseSP, nullptr);
 
         uint16_t backlash = std::stoi(result[3]);
@@ -1654,7 +1669,7 @@ bool PegasusUPB::getStepperData()
             FocusBacklashN[0].value = backlash;
             FocusBacklashS[INDI_ENABLED].s = ISS_OFF;
             FocusBacklashS[INDI_DISABLED].s = ISS_ON;
-            if (result[3] != lastStepperData[3])
+            if (stepperUpdated(result, 3))
             {
                 IDSetSwitch(&FocusBacklashSP, nullptr);
                 IDSetNumber(&FocuserSettingsNP, nullptr);
@@ -1665,7 +1680,7 @@ bool PegasusUPB::getStepperData()
             FocusBacklashS[INDI_ENABLED].s = ISS_ON;
             FocusBacklashS[INDI_DISABLED].s = ISS_OFF;
             FocusBacklashN[0].value = backlash;
-            if (result[3] != lastStepperData[3])
+            if (stepperUpdated(result, 3))
             {
                 IDSetSwitch(&FocusBacklashSP, nullptr);
                 IDSetNumber(&FocuserSettingsNP, nullptr);
@@ -1742,7 +1757,7 @@ bool PegasusUPB::setupParams()
             uint32_t value = std::stol(res);
             if (value == UINT16_MAX)
             {
-                LOGF_WARN("Invalid maximum speed detected: %u. Please set maximum speed appropiate for your motor focus type (0-900)",
+                LOGF_WARN("Invalid maximum speed detected: %u. Please set maximum speed appropriate for your motor focus type (0-900)",
                           value);
                 FocuserSettingsNP.s = IPS_ALERT;
             }

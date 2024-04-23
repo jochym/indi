@@ -60,53 +60,47 @@ typedef enum
 
 class WeatherSafetyProxy : public INDI::Weather
 {
-  public:
-    WeatherSafetyProxy();
-    virtual ~WeatherSafetyProxy();
+    public:
+        WeatherSafetyProxy();
+        virtual ~WeatherSafetyProxy();
 
-    //  Generic indi device entries
-    bool Connect() override;
-    bool Disconnect() override;
-    const char *getDefaultName() override;
+        //  Generic indi device entries
+        bool Connect() override;
+        bool Disconnect() override;
+        const char *getDefaultName() override;
 
-    virtual bool initProperties() override;
-    virtual bool updateProperties() override;
-    virtual void ISGetProperties(const char *dev) override;
-    virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
-    virtual bool ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) override;
-    virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
+        virtual bool initProperties() override;
+        virtual bool updateProperties() override;
+        virtual void ISGetProperties(const char *dev) override;
+        virtual bool ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n) override;
+        virtual bool ISNewText(const char *dev, const char *name, char *texts[], char *names[], int n) override;
+        virtual bool ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n) override;
 
 
-  protected:
-    virtual IPState updateWeather() override;
-    virtual bool saveConfigItems(FILE *fp) override;
+    protected:
+        virtual IPState updateWeather() override;
+        virtual bool saveConfigItems(FILE *fp) override;
 
-  private:
-    IPState executeScript();
-    IPState executeCurl();
-    IPState parseSafetyJSON(const char *buf, int byte_count);
+    private:
+        IPState executeScript();
+        IPState executeCurl();
+        IPState parseSafetyJSON(const std::string &buffer);
 
-    IText keywordT[1] {};
-    ITextVectorProperty keywordTP;
+        INDI::PropertyText keywordTP {1};
 
-    IText ScriptsT[WSP_SCRIPT_COUNT] {};
-    ITextVectorProperty ScriptsTP;
+        INDI::PropertyText ScriptsTP {1};
 
-    IText UrlT[WSP_URL_COUNT] {};
-    ITextVectorProperty UrlTP;
+        INDI::PropertyText UrlTP {1};
 
-    ISwitch ScriptOrCurlS[WSP_USE_COUNT];
-    ISwitchVectorProperty ScriptOrCurlSP;
+        INDI::PropertySwitch ScriptOrCurlSP {2};
 
-    IText reasonsT[1] {};
-    ITextVectorProperty reasonsTP;
+        INDI::PropertyText reasonsTP {1};
 
-    INumber softErrorHysteresisN[WSP_SOFT_ERROR_COUNT];
-    INumberVectorProperty softErrorHysteresisNP;
+        INDI::PropertyNumber softErrorHysteresisNP {2};
 
-    int Safety = -1;
-    int SofterrorCount = 0;
-    int SofterrorRecoveryCount = 0;
-    bool SofterrorRecoveryMode = false;
-    bool LastParseSuccess = false;
+        int Safety = -1;
+        int SofterrorCount = 0;
+        int SofterrorRecoveryCount = 0;
+        bool SofterrorRecoveryMode = false;
+        bool LastParseSuccess = false;
 };

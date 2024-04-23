@@ -53,7 +53,8 @@ static std::unique_ptr<RoboFocus> roboFocus(new RoboFocus());
 
 RoboFocus::RoboFocus()
 {
-    FI::SetCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE | FOCUSER_CAN_ABORT | FOCUSER_CAN_SYNC | FOCUSER_HAS_BACKLASH);
+    FI::SetCapability(FOCUSER_CAN_ABS_MOVE | FOCUSER_CAN_REL_MOVE | FOCUSER_CAN_ABORT | FOCUSER_CAN_SYNC |
+                      FOCUSER_HAS_BACKLASH);
 }
 
 bool RoboFocus::initProperties()
@@ -77,7 +78,7 @@ bool RoboFocus::initProperties()
     IUFillSwitch(&PowerSwitchesS[1], "2", "Switch 2", ISS_OFF);
     IUFillSwitch(&PowerSwitchesS[2], "3", "Switch 3", ISS_OFF);
     IUFillSwitch(&PowerSwitchesS[3], "4", "Switch 4", ISS_ON);
-    IUFillSwitchVector(&PowerSwitchesSP, PowerSwitchesS, 4, getDeviceName(), "SWTICHES", "Power", SETTINGS_TAB, IP_RW,
+    IUFillSwitchVector(&PowerSwitchesSP, PowerSwitchesS, 4, getDeviceName(), "SWITCHES", "Power", SETTINGS_TAB, IP_RW,
                        ISR_1OFMANY, 0, IPS_IDLE);
 
     /* Robofocus should stay within these limits */
